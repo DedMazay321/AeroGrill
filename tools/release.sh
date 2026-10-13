@@ -31,8 +31,8 @@ git push -q origin HEAD "v$VER"
 # Токен берётся из сохранённого входа git и никуда не записывается
 TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | sed -n 's/^password=//p')
 API=(-fsS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json")
-BODY=$(VER="$VER" NOTES="$NOTES" node -e 'console.log(JSON.stringify({ tag_name: "v" + process.env.VER, name: "Версия " + process.env.VER, body: process.env.NOTES }))')
-ID=$(curl "${API[@]}" -X POST "https://api.github.com/repos/$REPO/releases" -d "$BODY" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).id)')
+# Тело запроса идёт через поток: в аргументах командной строки Windows портит кириллицу
+ID=$(VER="$VER" NOTES="$NOTES" node -e 'process.stdout.write(JSON.stringify({ tag_name: "v" + process.env.VER, name: "Версия " + process.env.VER, body: process.env.NOTES }))'   | curl "${API[@]}" -X POST -H "Content-Type: application/json; charset=utf-8" "https://api.github.com/repos/$REPO/releases" --data-binary @- | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).id)')
 curl "${API[@]}" -X POST -H "Content-Type: application/vnd.android.package-archive" --data-binary @AeroGrill.apk \
   "https://uploads.github.com/repos/$REPO/releases/$ID/assets?name=AeroGrill.apk" >/dev/null
 
