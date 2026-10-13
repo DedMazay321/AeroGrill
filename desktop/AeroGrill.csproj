@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Версия для Windows: окно со встроенным браузером WebView2, внутри те же страницы, что и в Android-приложении.
+       Цель — .NET Framework 4.8: он уже есть в Windows 10 и 11, ставить ничего не нужно. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>AeroGrill</AssemblyName>
+    <RootNamespace>AeroGrill</RootNamespace>
+    <AppVersion Condition="'$(AppVersion)' == ''">0.0.0</AppVersion>
+    <Version>$(AppVersion)</Version>
+    <Product>АэроГриль</Product>
+    <AssemblyTitle>АэроГриль</AssemblyTitle>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>ru</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" GeneratePathProperty="true" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <!-- Всё нужное лежит внутри одного exe: страницы приложения и библиотеки WebView2 -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(WwwZip)" LogicalName="www.zip" Condition="'$(WwwZip)' != ''" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.Core.dll" LogicalName="Microsoft.Web.WebView2.Core.dll" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.WinForms.dll" LogicalName="Microsoft.Web.WebView2.WinForms.dll" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" LogicalName="WebView2Loader.dll" />
+  </ItemGroup>
+</Project>
