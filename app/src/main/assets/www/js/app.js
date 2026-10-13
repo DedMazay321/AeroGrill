@@ -214,10 +214,13 @@ function targetFields(key) {
 function miniDish(it) {
   const r = byId(it.id);
   return `<a class="mini" data-act="open-fit" data-id="${r.id}" data-m='${JSON.stringify(it.m)}'>
-    <div class="tile">${r.e}</div>
+    ${tile(r)}
     <div class="grow"><b>${r.name}</b><div class="kb">${kbLine(it.n)}</div>
     <div class="small muted">«${r.prog}» · ${r.temp} °C · ${dur(r.cook)}${r.steam ? ' · <span class="steam-c">пар</span>' : ''}</div></div><span class="muted">›</span></a>`;
 }
+
+// Плитка блюда: фото, а если его нет — эмодзи
+const tile = r => `<div class="tile">${PHOTOS[r.id] ? `<img loading="lazy" src="img/${r.id}.jpg" alt="">` : r.e}</div>`;
 
 /* ---------- Экран: каталог ---------- */
 function recipeMatches(r) {
@@ -231,7 +234,7 @@ function recipeMatches(r) {
   return !q || r.name.toLowerCase().includes(q) || r.prog.toLowerCase().includes(q) || r.ing.some(i => ING[i[0]].n.toLowerCase().includes(q));
 }
 function recipeCard(r) {
-  return `<a class="rcard" href="#/r/${r.id}"><div class="tile">${r.e}</div><div class="grow"><h3>${r.name}</h3>
+  return `<a class="rcard" href="#/r/${r.id}">${tile(r)}<div class="grow"><h3>${r.name}</h3>
     <div class="meta"><span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
     <div class="kb">${kbLine(perServing(r))}</div></div>
     <button class="fav ${st.fav[r.id] ? 'on' : ''}" data-act="fav" data-id="${r.id}">⭐</button></a>`;
@@ -242,7 +245,7 @@ function listHtml() {
 }
 function viewRecipes() {
   const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал']];
-  return `<div id="updb">${updateBanner()}</div><h1>Рецепты для аэрогриля</h1><p class="muted small">Weissgauff WAF 720 DB Steam Fry · КБЖУ на порцию</p>
+  return `<div id="updb">${updateBanner()}</div><h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
     <div class="search-wrap"><input class="search" type="search" placeholder="Блюдо, продукт или программа" value="${esc(st.q)}" data-search></div>
     <div class="chips"><button class="chip ${st.cat === 'all' ? 'on' : ''}" data-act="cat" data-v="all">Все</button>
       ${Object.keys(CATS).map(c => `<button class="chip ${st.cat === c ? 'on' : ''}" data-act="cat" data-v="${c}">${CATS[c]}</button>`).join('')}</div>
@@ -259,11 +262,12 @@ function viewRecipe(id, fit) {
   const m = fit ? st.adapt[id] : null;
   if (rv.id !== id || rv.fit !== !!m) Object.assign(rv, { id, fit: !!m, portions: m ? 1 : r.serves });
   const done = st.steps[id] || {}, nDone = doneCount(r), total = r.steps.length;
-  const list = amounts(r, rv.portions, m), n = nutri(list).map(v => v / rv.portions);
+  const list = amounts(r, rv.portions, m), n = nutri(list).map(v => v / rv.portions), ph = PHOTOS[id];
   const load = list.reduce((a, x) => a + x.g, 0) / r.ing.reduce((a, i) => a + i[1], 0);
   return `<div class="top"><button class="icon-btn" data-act="back">‹</button>
       <button class="icon-btn fav ${st.fav[id] ? 'on' : ''}" data-act="fav" data-id="${id}">⭐</button></div>
-    <div class="hero"><div class="tile">${r.e}</div><div><h1>${r.name}</h1>
+    ${ph ? `<div class="photo"><img src="img/${id}.jpg" alt=""><a href="${esc(ph.u)}">Фото: ${esc(ph.a)} · ${esc(ph.l)}</a></div>` : ''}
+    <div class="hero">${ph ? '' : tile(r)}<div><h1>${r.name}</h1>
       <p class="muted small">${CATS[r.cat]} · подготовка ${dur(r.prep)} · готовка ${dur(r.cook)}</p></div></div>
     ${m ? `<div class="note tip">🎯 Количество продуктов подстроено под вашу цель по КБЖУ. <a data-act="unfit" style="color:var(--accent);font-weight:600">Показать исходный рецепт</a></div>` : ''}
     <div class="card"><div class="panel">
@@ -422,6 +426,10 @@ function viewGuide() {
       <li>Ставьте аэрогриль на ровную термостойкую поверхность, оставляя 15 см до стен.</li>
       <li>Не наливайте масло в чашу — это не фритюрница.</li>
       <li>Корпус и выходящий пар горячие: открывайте чашу от себя.</li></ul></div>
+    <h2>Фотографии</h2>
+    <div class="card"><p class="small">Фото блюд взяты с Wikimedia Commons по свободным лицензиям и служат иллюстрацией: ваше блюдо может выглядеть иначе. Снимки обрезаны и уменьшены.</p>
+      <details style="margin-top:8px"><summary class="small muted">Авторы и лицензии (${Object.keys(PHOTOS).length})</summary>
+      ${RECIPES.filter(r => PHOTOS[r.id]).map(r => `<p class="small" style="margin-top:6px">${r.name} — <a href="${esc(PHOTOS[r.id].u)}" style="color:var(--accent)">${esc(PHOTOS[r.id].a)}, ${esc(PHOTOS[r.id].l)}</a></p>`).join('')}</details></div>
     <p class="muted small">КБЖУ рассчитаны по сырому весу продуктов и являются приблизительными.</p>`;
 }
 

@@ -18,3 +18,7 @@ tools/release.sh 1.2.0 "Что изменилось в этой версии"
 Нужны JDK 17, Android SDK и файл ключа `signing/aerogrill.keystore` (в репозитории его нет — обновления должны быть подписаны тем же ключом).
 
 Интерфейс лежит в `app/src/main/assets/www`, для просмотра в браузере: `node tools/serve.js`.
+
+## Фотографии
+
+Фото блюд взяты с Wikimedia Commons по свободным лицензиям (CC0, CC BY, CC BY-SA), обрезаны и уменьшены. Авторы и лицензии каждого снимка перечислены в `app/src/main/assets/www/js/data-photos.js` и в приложении: «Справка» → «Фотографии». Подбор фото: `python tools/photos.py`.
