@@ -494,10 +494,13 @@ function pantryMatch() {
   }).filter(x => x.miss.length <= 3 && x.miss.length < x.need).sort((x, y) => x.miss.length - y.miss.length || y.need - x.need);
 }
 function pantryChips() {
-  const q = pq.trim().toLowerCase();
-  return Object.keys(SECTIONS).map(sec => {
+  const q = pq.trim().toLowerCase(), chip = id => `<button class="chip ${st.pantry[id] ? 'on' : ''}" data-act="pantry" data-v="${id}">${ING[id].n}</button>`;
+  const mine = Object.keys(ING).filter(id => st.pantry[id]).sort((x, y) => ING[x].n.localeCompare(ING[y].n, 'ru'));
+  // Отмеченное показываем первым блоком: иначе его не видно среди сотни продуктов ниже
+  const top = q || !mine.length ? '' : `<h2>Отмечено (${mine.length})</h2><div class="chips wrap">${mine.map(chip).join('')}</div><p class="small muted" style="margin-top:8px">Нажмите на продукт, чтобы убрать его.</p>`;
+  return top + Object.keys(SECTIONS).map(sec => {
     const ids = Object.keys(ING).filter(id => ING[id].s === sec && (!q || ING[id].n.toLowerCase().includes(q))).sort((x, y) => ING[x].n.localeCompare(ING[y].n, 'ru'));
-    return !ids.length ? '' : `<h2>${SECTIONS[sec]}</h2><div class="chips wrap">${ids.map(id => `<button class="chip ${st.pantry[id] ? 'on' : ''}" data-act="pantry" data-v="${id}">${ING[id].n}</button>`).join('')}</div>`;
+    return !ids.length ? '' : `<h2>${SECTIONS[sec]}</h2><div class="chips wrap">${ids.map(chip).join('')}</div>`;
   }).join('') || '<div class="empty">Такого продукта нет в рецептах</div>';
 }
 function viewPantry() {
@@ -775,8 +778,12 @@ const ACTIONS = {
   check: v => { st.shop.done[v] = !st.shop.done[v]; if (st.shop.done[v] && ING[v]) st.pantry[v] = true; },
   ptab: v => { st.ptab = v; },
   pantry: v => { st.pantry[v] = !st.pantry[v]; },
-  'pantry-basics': () => { BASICS.forEach(id => { st.pantry[id] = true; }); },
-  'pantry-clear': () => { st.pantry = {}; },
+  'pantry-basics': () => {
+    const added = BASICS.filter(id => !st.pantry[id]);
+    added.forEach(id => { st.pantry[id] = true; });
+    toast(added.length ? 'Отмечено базовых продуктов: ' + added.length : 'Базовые продукты уже отмечены');
+  },
+  'pantry-clear': () => { st.pantry = {}; toast('Список очищен'); },
   'pantry-buy': (v, el) => {
     const r = byId(el.dataset.id);
     addToShop(amounts(r, r.serves).filter(x => !st.pantry[x.id]), []);
