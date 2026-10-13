@@ -1,4 +1,4 @@
-// Локальный просмотр интерфейса в браузере: node tools/serve.js → http://localhost:5173
+// Локальный просмотр интерфейса в браузере: node tools/serve.js → http://localhost:5387
 const http = require('http'), fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..', 'app', 'src', 'main', 'assets', 'www');
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -10,5 +10,5 @@ const server = http.createServer((req, res) => {
     res.end(data);
   });
 });
-const port = process.env.PORT || 5173;
+const port = process.env.PORT || 5387;
 server.listen(port, () => console.log('http://localhost:' + port));

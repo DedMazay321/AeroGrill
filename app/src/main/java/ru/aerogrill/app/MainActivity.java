@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -21,19 +22,40 @@ import android.webkit.WebViewClient;
 
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
-/** Оболочка: весь интерфейс лежит в assets/www и показывается во встроенном WebView. */
+/**
+ * Оболочка: интерфейс и рецепты — это веб-страницы во встроенном WebView.
+ * Они лежат в assets/www внутри APK, но более новый комплект можно скачать из релиза
+ * в папку приложения — так обновления ставятся без переустановки APK.
+ */
 public class MainActivity extends Activity {
+    /**
+     * Номер версии оболочки. Комплект страниц из релиза подходит, если ему нужна оболочка не новее этой.
+     * tools/release.sh сам увеличивает число, когда меняется Java-код, манифест или ресурсы.
+     */
+    static final int SHELL = 2;
     /** Обновления принимаются только из релизов этого репозитория. */
     private static final String RELEASES = "https://github.com/DedMazay321/AeroGrill/releases/download/";
+    private static final String ASSETS_URL = "file:///android_asset/www/index.html";
+    private static final long MAX_WEB_SIZE = 80L << 20;
+
     static volatile boolean foreground;
     private volatile boolean updating;
     private WebView web;
+    private SharedPreferences prefs;
+    /** Версия страниц, которые сейчас показаны: из APK или из скачанного комплекта. */
+    private volatile String activeVersion = "";
+    private boolean clearHistory;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -41,14 +63,25 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         // На кухне экран не должен гаснуть посреди рецепта
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        prefs = getSharedPreferences("app", MODE_PRIVATE);
 
         web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        s.setAllowFileAccess(true); // скачанный комплект страниц лежит в папке приложения
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setTextZoom(100);
         web.setWebViewClient(new WebViewClient() {
+            // После смены комплекта страниц кнопка «Назад» не должна возвращать к старому
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (clearHistory) {
+                    clearHistory = false;
+                    view.clearHistory();
+                }
+            }
+
             // Внешние ссылки (источники фото) открываются в браузере, а не внутри приложения
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -65,15 +98,7 @@ public class MainActivity extends Activity {
         web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
         setContentView(web);
-
-        if (savedInstanceState == null) web.loadUrl("file:///android_asset/www/index.html");
-        else web.restoreState(savedInstanceState);
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
-        web.saveState(outState);
+        loadWeb();
     }
 
     @Override
@@ -94,24 +119,100 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
-    /** У каждого таймера свой номер: он отличает будильники и уведомления друг от друга. */
-    private PendingIntent alarmIntent(int id, String label) {
-        Intent i = new Intent(this, TimerReceiver.class).putExtra("label", label).putExtra("id", id);
-        return PendingIntent.getBroadcast(this, id, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    /* ---------- Какие страницы показывать ---------- */
+
+    private String apkVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return "0";
+        }
     }
 
+    private static int compareVersions(String a, String b) {
+        String[] x = a.split("\\."), y = b.split("\\.");
+        for (int i = 0; i < 3; i++) {
+            int d = part(x, i) - part(y, i);
+            if (d != 0) return d;
+        }
+        return 0;
+    }
+
+    private static int part(String[] v, int i) {
+        try {
+            return i < v.length ? Integer.parseInt(v[i]) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private File webRoot() {
+        return new File(getFilesDir(), "web");
+    }
+
+    private static void delete(File f) {
+        File[] children = f.listFiles();
+        if (children != null) for (File c : children) delete(c);
+        f.delete();
+    }
+
+    /**
+     * Показывает скачанный комплект страниц, если он новее встроенного в APK и исправен.
+     * Комплект, который за три запуска ни разу не сообщил, что загрузился, считается сломанным и удаляется.
+     */
+    private void loadWeb() {
+        clearHistory = true;
+        String apk = apkVersion(), ver = prefs.getString("web_ver", null);
+        if (ver != null) {
+            File index = new File(new File(webRoot(), ver), "index.html");
+            int tries = prefs.getInt("web_tries", 0);
+            boolean confirmed = prefs.getBoolean("web_ok", false);
+            if (compareVersions(ver, apk) > 0 && index.isFile() && (confirmed || tries < 3)) {
+                if (!confirmed) prefs.edit().putInt("web_tries", tries + 1).apply();
+                activeVersion = ver;
+                web.loadUrl(Uri.fromFile(index).toString());
+                return;
+            }
+            prefs.edit().remove("web_ver").remove("web_ok").remove("web_tries").apply();
+            delete(webRoot());
+        }
+        activeVersion = apk;
+        web.loadUrl(ASSETS_URL);
+    }
+
+    /* ---------- Загрузка обновлений ---------- */
+
     private void js(String fn, String arg) {
-        web.post(() -> web.evaluateJavascript("window." + fn + "(" + arg + ")", null));
+        web.post(() -> web.evaluateJavascript("window." + fn + " && window." + fn + "(" + arg + ")", null));
+    }
+
+    private HttpURLConnection open(String url) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(30000);
+        if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode());
+        return c;
+    }
+
+    /** Копирует поток и сообщает интерфейсу проценты от 0 до 99. */
+    private void copy(InputStream in, OutputStream out, long total) throws IOException {
+        byte[] buf = new byte[65536];
+        long done = 0;
+        int n, shown = -1;
+        while ((n = in.read(buf)) > 0) {
+            out.write(buf, 0, n);
+            done += n;
+            if (done > MAX_WEB_SIZE) throw new IOException("файл слишком большой");
+            int pct = total > 0 ? (int) Math.min(99, done * 100 / total) : 0;
+            if (pct != shown) js("onUpdateProgress", String.valueOf(shown = pct));
+        }
     }
 
     /** Скачивает APK из релиза и передаёт его системному установщику, который спросит подтверждение. */
     private void downloadAndInstall(String url) {
         PackageInstaller.Session session = null;
         try {
-            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-            c.setConnectTimeout(15000);
-            c.setReadTimeout(30000);
-            if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode());
+            HttpURLConnection c = open(url);
             long total = c.getContentLengthLong();
 
             PackageInstaller installer = getPackageManager().getPackageInstaller();
@@ -121,15 +222,7 @@ public class MainActivity extends Activity {
             session = installer.openSession(id);
 
             try (InputStream in = c.getInputStream(); OutputStream out = session.openWrite("update.apk", 0, total > 0 ? total : -1)) {
-                byte[] buf = new byte[65536];
-                long done = 0;
-                int n, shown = -1;
-                while ((n = in.read(buf)) > 0) {
-                    out.write(buf, 0, n);
-                    done += n;
-                    int pct = total > 0 ? (int) Math.min(99, done * 100 / total) : 0;
-                    if (pct != shown) js("onUpdateProgress", String.valueOf(shown = pct));
-                }
+                copy(in, out, total);
                 session.fsync(out);
             }
 
@@ -146,8 +239,68 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Методы, которые вызывает интерфейс: таймер должен сработать, даже если приложение свёрнуто. */
+    /** Распаковывает архив в папку, не выпуская файлы за её пределы. */
+    private static void unzip(File zip, File dir) throws IOException {
+        String root = dir.getCanonicalPath() + File.separator;
+        byte[] buf = new byte[65536];
+        try (ZipInputStream in = new ZipInputStream(new FileInputStream(zip))) {
+            for (ZipEntry e; (e = in.getNextEntry()) != null; ) {
+                File out = new File(dir, e.getName());
+                if (!out.getCanonicalPath().startsWith(root)) throw new IOException("недопустимый путь в архиве");
+                if (e.isDirectory()) {
+                    out.mkdirs();
+                    continue;
+                }
+                out.getParentFile().mkdirs();
+                try (OutputStream os = new FileOutputStream(out)) {
+                    for (int n; (n = in.read(buf)) > 0; ) os.write(buf, 0, n);
+                }
+            }
+        }
+    }
+
+    /** Скачивает комплект страниц из релиза и делает его активным. Окно установки Android не нужно. */
+    private void downloadWeb(String url, String version, boolean reload) {
+        File zip = new File(getCacheDir(), "www.zip");
+        File tmp = new File(webRoot(), version + ".tmp"), dir = new File(webRoot(), version);
+        try {
+            HttpURLConnection c = open(url);
+            try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(zip)) {
+                copy(in, out, c.getContentLengthLong());
+            }
+            delete(tmp);
+            delete(dir);
+            tmp.mkdirs();
+            unzip(zip, tmp);
+            if (!new File(tmp, "index.html").isFile()) throw new IOException("в архиве нет index.html");
+            if (!tmp.renameTo(dir)) throw new IOException("не удалось сохранить файлы");
+
+            prefs.edit().putString("web_ver", version).putBoolean("web_ok", false).putInt("web_tries", 0).apply();
+            File[] old = webRoot().listFiles();
+            if (old != null) for (File f : old) if (!f.equals(dir)) delete(f);
+
+            if (reload) runOnUiThread(this::loadWeb);
+            else js("onWebReady", JSONObject.quote(version));
+        } catch (Exception e) {
+            delete(tmp);
+            js("onUpdateError", JSONObject.quote(String.valueOf(e.getMessage())));
+        } finally {
+            zip.delete();
+            updating = false;
+        }
+    }
+
+    /* ---------- Таймеры ---------- */
+
+    /** У каждого таймера свой номер: он отличает будильники и уведомления друг от друга. */
+    private PendingIntent alarmIntent(int id, String label) {
+        Intent i = new Intent(this, TimerReceiver.class).putExtra("label", label).putExtra("id", id);
+        return PendingIntent.getBroadcast(this, id, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** Методы, которые вызывает интерфейс. */
     private class Bridge {
+        // Таймер должен сработать, даже если приложение свёрнуто
         @JavascriptInterface
         public void startTimer(int id, int seconds, String label) {
             runOnUiThread(() -> {
@@ -168,28 +321,66 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void cancelTimer(int id) {
+            runOnUiThread(() -> ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).cancel(alarmIntent(id, "")));
+        }
+
+        @JavascriptInterface
         public String getVersion() {
-            try {
-                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-            } catch (PackageManager.NameNotFoundException e) {
-                return "";
+            return activeVersion;
+        }
+
+        @JavascriptInterface
+        public int getShell() {
+            return SHELL;
+        }
+
+        /** Страницы загрузились и работают — скачанный комплект можно считать исправным. */
+        @JavascriptInterface
+        public void webOk() {
+            prefs.edit().putBoolean("web_ok", true).apply();
+        }
+
+        // Данные пользователя дублируются здесь: у страниц из APK и из скачанного комплекта разные адреса,
+        // и хранилище браузера у них может не совпасть.
+        @JavascriptInterface
+        public void saveState(String json) {
+            prefs.edit().putString("state", json).apply();
+        }
+
+        @JavascriptInterface
+        public String loadState() {
+            return prefs.getString("state", "");
+        }
+
+        private boolean begin(String url) {
+            if (url == null || !url.startsWith(RELEASES)) {
+                js("onUpdateError", JSONObject.quote("неверный адрес обновления"));
+                return false;
             }
+            if (updating) return false;
+            updating = true;
+            return true;
         }
 
         @JavascriptInterface
         public void installUpdate(String url) {
-            if (url == null || !url.startsWith(RELEASES)) {
-                js("onUpdateError", JSONObject.quote("неверный адрес обновления"));
-                return;
-            }
-            if (updating) return;
-            updating = true;
-            new Thread(() -> downloadAndInstall(url)).start();
+            if (begin(url)) new Thread(() -> downloadAndInstall(url)).start();
         }
 
         @JavascriptInterface
-        public void cancelTimer(int id) {
-            runOnUiThread(() -> ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).cancel(alarmIntent(id, "")));
+        public void installWeb(String url, String version, boolean reload) {
+            if (version == null || !version.matches("\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}")) {
+                js("onUpdateError", JSONObject.quote("неверный номер версии"));
+                return;
+            }
+            if (begin(url)) new Thread(() -> downloadWeb(url, version, reload)).start();
+        }
+
+        /** Перезагружает страницы — применяет комплект, скачанный в фоне. */
+        @JavascriptInterface
+        public void reloadWeb() {
+            runOnUiThread(MainActivity.this::loadWeb);
         }
     }
 }

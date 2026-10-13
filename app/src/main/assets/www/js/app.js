@@ -6,11 +6,22 @@ const st = Object.assign({
   profile: { sex: 'm', age: 30, weight: 75, height: 175, act: 1.375, goal: 'keep' },
   target: null, meals: 4, excl: {}, persons: 1, kmode: 'day', calcOpen: false,
   dishT: { k: 550, p: 40, f: 18, c: 50 }, dishType: 'm', dishRes: null, menu: null,
-  adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def'
+  adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def', autoUpd: true
 }, load());
 
-function load() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; } }
-function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(st)); } catch (e) { /* хранилище недоступно */ } }
+// Данные хранятся в двух местах: в хранилище страницы и в Android-оболочке. После обновления страницы
+// могут открыться с другого адреса, где хранилище пустое или устарело, — тогда берётся более свежая копия.
+function load() {
+  const read = get => { try { return JSON.parse(get()) || {}; } catch (e) { return {}; } };
+  const a = read(() => localStorage.getItem(LS_KEY)), b = read(() => window.AndroidBridge.loadState());
+  return (b.savedAt || 0) > (a.savedAt || 0) ? b : a;
+}
+function save() {
+  st.savedAt = Date.now();
+  const json = JSON.stringify(st);
+  try { localStorage.setItem(LS_KEY, json); } catch (e) { /* хранилище недоступно */ }
+  try { window.AndroidBridge.saveState(json); } catch (e) { /* открыто в браузере или старая оболочка */ }
+}
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -466,9 +477,12 @@ function viewGuide() {
 }
 
 /* ---------- Обновление через GitHub ---------- */
+// В каждом релизе два файла: www-shellN.zip — страницы и рецепты, ставятся внутри приложения без участия Android;
+// AeroGrill.apk — приложение целиком, нужно, только если страницам требуется оболочка новее установленной (N > SHELL).
 const REPO = 'DedMazay321/AeroGrill';
-let VERSION = null; // в браузере версии нет — её сообщает Android-оболочка
+let VERSION = null, SHELL = 0; // в браузере версии нет — её сообщает Android-оболочка
 try { VERSION = window.AndroidBridge.getVersion(); } catch (e) { /* открыто в браузере */ }
+try { SHELL = window.AndroidBridge.getShell(); } catch (e) { /* оболочка до версии 1.4 */ }
 const up = { state: 'idle', list: [], pct: 0, msg: '' };
 function verCmp(a, b) {
   const x = a.split('.'), y = b.split('.');
@@ -476,63 +490,79 @@ function verCmp(a, b) {
   return 0;
 }
 const hasUpdate = () => !!(VERSION && st.updNew && verCmp(st.updNew, VERSION) > 0);
+const latest = () => up.list.find(r => r.url || r.web);
+const canWeb = r => !!(r && r.web && SHELL && r.shell <= SHELL);
 const ruDate = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
 async function checkUpdate() {
-  if (up.state === 'checking' || up.state === 'downloading') return;
+  if (up.state === 'checking' || up.state === 'downloading' || up.state === 'ready') return;
   up.state = 'checking';
   drawUpdate();
   try {
     const res = await fetch('https://api.github.com/repos/' + REPO + '/releases?per_page=10', { headers: { Accept: 'application/vnd.github+json' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    up.list = (await res.json()).filter(r => !r.draft && !r.prerelease).map(r => ({
-      v: r.tag_name.replace(/^v/, ''), notes: r.body || '', date: r.published_at.slice(0, 10),
-      url: (r.assets.find(a => a.name.endsWith('.apk')) || {}).browser_download_url
-    }));
-    const last = up.list.find(r => r.url);
+    up.list = (await res.json()).filter(r => !r.draft && !r.prerelease).map(r => {
+      const web = r.assets.find(a => /^www-shell\d+\.zip$/.test(a.name));
+      return {
+        v: r.tag_name.replace(/^v/, ''), notes: r.body || '', date: r.published_at.slice(0, 10),
+        url: (r.assets.find(a => a.name.endsWith('.apk')) || {}).browser_download_url,
+        web: web && web.browser_download_url, shell: web ? +web.name.match(/\d+/)[0] : 0
+      };
+    });
+    const last = latest();
     st.updNew = last ? last.v : null;
     st.updSeen = Date.now();
     save();
     up.state = hasUpdate() ? 'available' : 'latest';
+    // Обновление страниц качаем сами и включаем при следующем запуске, чтобы не прерывать готовку
+    if (hasUpdate() && st.autoUpd && canWeb(last)) installUpdate(true);
   } catch (e) {
     up.state = 'error';
     up.msg = 'Не удалось проверить обновления. Проверьте интернет и попробуйте ещё раз.';
   }
   drawUpdate();
 }
-function installUpdate() {
-  const last = up.list.find(r => r.url);
+function installUpdate(background) {
+  const last = latest();
   if (!last) return;
-  if (window.AndroidBridge && window.AndroidBridge.installUpdate) {
+  if (canWeb(last)) {
+    up.state = 'downloading'; up.pct = 0;
+    window.AndroidBridge.installWeb(last.web, last.v, !background);
+  } else if (!last.url) return;
+  else if (window.AndroidBridge && window.AndroidBridge.installUpdate) {
     up.state = 'downloading'; up.pct = 0;
     window.AndroidBridge.installUpdate(last.url);
   } else window.open(last.url);
   drawUpdate();
 }
-// Эти две функции вызывает Android-оболочка во время загрузки
+// Эти функции вызывает Android-оболочка во время загрузки
 window.onUpdateProgress = pct => { up.state = pct >= 100 ? 'confirm' : 'downloading'; up.pct = pct; drawUpdate(); };
 window.onUpdateError = msg => { up.state = 'error'; up.msg = 'Не удалось установить обновление: ' + msg; drawUpdate(); };
+window.onWebReady = v => { up.state = 'ready'; up.readyV = v; drawUpdate(); toast('Версия ' + v + ' загружена и включится при следующем запуске'); };
 const notesHtml = t => esc(t).replace(/\r?\n/g, '<br>');
 function updateInner() {
-  const last = up.list.find(r => r.url), s = up.state;
+  const last = latest(), s = up.state, web = canWeb(last);
   const body = s === 'checking' ? '<p class="muted small" style="margin-top:10px">Проверяю обновления…</p>'
     : s === 'available' ? `<div class="note tip" style="margin:12px 0"><b>Доступна версия ${esc(last.v)}</b> от ${ruDate(last.date)}<br>${notesHtml(last.notes)}</div>
-        <button class="btn" data-act="upd-install">⬇️ Скачать и установить</button>
-        <p class="muted small" style="margin-top:8px">Подойдёт любой интернет — Wi-Fi или мобильный. Рецепты, избранное и отметки сохранятся.</p>`
+        <button class="btn" data-act="upd-install">${web ? '⬇️ Обновить сейчас' : '⬇️ Скачать и установить'}</button>
+        <p class="muted small" style="margin-top:8px">${web ? 'Обновление ставится внутри приложения за несколько секунд — подтверждать в Android ничего не нужно.' : 'Это обновление меняет саму программу, поэтому Android попросит подтвердить установку.'} Подойдёт любой интернет. Избранное и отметки сохранятся.</p>`
     : s === 'downloading' ? `<p class="small" style="margin:12px 0 6px">Загрузка обновления… ${up.pct}%</p><div class="track"><i style="width:${up.pct}%"></i></div>`
+    : s === 'ready' ? `<div class="note ok" style="margin:12px 0">Версия ${esc(up.readyV)} загружена и включится при следующем запуске приложения.</div><button class="btn" data-act="upd-apply">Включить сейчас</button>`
     : s === 'confirm' ? '<div class="note ok" style="margin:12px 0 0">Обновление загружено. Подтвердите установку в окне Android. Если телефон просит разрешить установку из этого приложения — разрешите и нажмите «Скачать и установить» ещё раз.</div><button class="btn ghost" style="margin-top:10px" data-act="upd-install">Повторить установку</button>'
     : s === 'latest' ? '<p class="small" style="margin-top:10px"><span class="badge ok">У вас последняя версия</span></p>'
     : s === 'error' ? `<div class="note" style="margin:12px 0 0">${esc(up.msg)}</div>` : '';
   const history = !up.list.length ? '' : `<details style="margin-top:12px"><summary class="small muted">История версий</summary>
     ${up.list.map(r => `<p class="small" style="margin-top:8px"><b>${esc(r.v)}</b> <span class="muted">· ${ruDate(r.date)}${r.v === VERSION ? ' · установлена' : ''}</span><br>${notesHtml(r.notes)}</p>`).join('')}</details>`;
   return `<div class="row between"><div><b>Версия приложения</b><div class="muted small">${VERSION ? esc(VERSION) : 'открыто в браузере'}</div></div>
-    ${s === 'checking' || s === 'downloading' ? '' : '<button class="btn sm ghost" data-act="upd-check">🔄 Проверить обновления</button>'}</div>${body}${history}`;
+    ${s === 'checking' || s === 'downloading' ? '' : '<button class="btn sm ghost" data-act="upd-check">🔄 Проверить обновления</button>'}</div>${body}
+    ${SHELL ? `<button class="check ${st.autoUpd ? 'on' : ''}" style="margin-top:8px" data-act="upd-auto"><i>✓</i><span class="grow" style="text-decoration:none;opacity:1">Обновлять автоматически<br><span class="muted small">Новые рецепты и исправления загружаются сами при запуске</span></span></button>` : ''}${history}`;
 }
 function drawUpdate() {
   const el = $('#upd'), b = $('#updb');
   if (el) el.innerHTML = updateInner();
   if (b) b.innerHTML = updateBanner();
 }
-const updateBanner = () => hasUpdate() ? `<a class="note tip" style="display:block" href="#/guide">🆕 Доступна версия ${esc(st.updNew)} — нажмите, чтобы обновить</a>` : '';
+const updateBanner = () => up.state === 'ready' ? `<a class="note ok" style="display:block" data-act="upd-apply">✅ Версия ${esc(up.readyV)} загружена — нажмите, чтобы включить</a>`
+  : hasUpdate() && up.state !== 'downloading' ? `<a class="note tip" style="display:block" href="#/guide">🆕 Доступна версия ${esc(st.updNew)} — нажмите, чтобы обновить</a>` : '';
 
 /* ---------- Таймеры ---------- */
 const bridge = (fn, ...a) => { try { if (window.AndroidBridge) window.AndroidBridge[fn](...a); } catch (e) { /* в браузере моста нет */ } };
@@ -662,7 +692,9 @@ const ACTIONS = {
   dishType: v => { st.dishType = v; },
   find: () => { findDishes(); },
   'upd-check': () => { checkUpdate(); return false; },
-  'upd-install': () => { installUpdate(); return false; }
+  'upd-install': () => { installUpdate(false); return false; },
+  'upd-apply': () => { bridge('reloadWeb'); return false; },
+  'upd-auto': () => { st.autoUpd = !st.autoUpd; save(); drawUpdate(); return false; }
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
@@ -688,5 +720,9 @@ document.addEventListener('input', e => {
 
 render(false);
 tick();
+// Оболочка ждёт этот сигнал: скачанный комплект страниц, который так и не запустился, она удалит
+bridge('webOk');
+if (VERSION && st.seenVersion && st.seenVersion !== VERSION) toast('Приложение обновлено до версии ' + VERSION);
+if (VERSION && st.seenVersion !== VERSION) { st.seenVersion = VERSION; save(); }
 // Раз в 6 часов при запуске тихо проверяем, не вышла ли новая версия
 if (VERSION && Date.now() - (st.updSeen || 0) > 6 * 3600000) checkUpdate();
