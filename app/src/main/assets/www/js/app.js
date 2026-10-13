@@ -6,7 +6,7 @@ const st = Object.assign({
   profile: { sex: 'm', age: 30, weight: 75, height: 175, act: 1.375, goal: 'keep' },
   target: null, meals: 4, excl: {}, persons: 1, kmode: 'day', calcOpen: false,
   dishT: { k: 550, p: 40, f: 18, c: 50 }, dishType: 'm', dishRes: null, menu: null,
-  adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null
+  adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def'
 }, load());
 
 function load() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; } }
@@ -239,9 +239,19 @@ function recipeCard(r) {
     <div class="kb">${kbLine(perServing(r))}</div></div>
     <button class="fav ${st.fav[r.id] ? 'on' : ''}" data-act="fav" data-id="${r.id}">⭐</button></a>`;
 }
+const SORTS = {
+  def: ['По разделам', null],
+  time: ['Сначала быстрые', (a, b) => a.prep + a.cook - b.prep - b.cook],
+  kcal: ['Меньше калорий', (a, b) => perServing(a)[0] - perServing(b)[0]],
+  protein: ['Больше белка', (a, b) => perServing(b)[1] - perServing(a)[1]],
+  name: ['По алфавиту', (a, b) => a.name.localeCompare(b.name, 'ru')]
+};
 function listHtml() {
-  const list = RECIPES.filter(recipeMatches);
-  return list.length ? list.map(recipeCard).join('') : '<div class="empty">Ничего не найдено.<br>Измените запрос или фильтры.</div>';
+  const list = RECIPES.filter(recipeMatches), sort = (SORTS[st.sort] || SORTS.def)[1];
+  if (sort) list.sort(sort);
+  return `<div class="row between" style="margin-bottom:10px"><span class="muted small">Найдено: ${list.length}</span>
+      <select class="sortsel" data-sel="sort">${Object.keys(SORTS).map(k => `<option value="${k}" ${st.sort === k ? 'selected' : ''}>${SORTS[k][0]}</option>`).join('')}</select></div>`
+    + (list.length ? list.map(recipeCard).join('') : '<div class="empty">Ничего не найдено.<br>Измените запрос или фильтры.</div>');
 }
 function viewRecipes() {
   const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал']];
@@ -285,12 +295,34 @@ function viewRecipe(id, fit) {
     <div class="row between"><h2>Приготовление</h2>
       <span class="row"><span class="badge ${nDone === total ? 'ok' : ''}">${nDone} из ${total}</span>${nDone ? '<button class="btn sm ghost" data-act="steps-reset">Сбросить</button>' : ''}</span></div>
     <div class="track" style="margin-bottom:10px"><i style="width:${nDone / total * 100}%"></i></div>
-    <p class="muted small" style="margin-bottom:8px">Нажимайте на шаг, когда выполнили его, — отметки сохраняются.</p>
+    <button class="btn" style="margin-bottom:10px" data-act="cook-start">▶ Готовить по шагам</button>
+    <p class="muted small" style="margin-bottom:8px">Или нажимайте на шаг в списке, когда выполнили его, — отметки сохраняются.</p>
     <div class="card">${r.steps.map((s, i) => `<div class="step ${s.set ? 'cook' : ''} ${done[i] ? 'done' : ''}" data-act="step" data-v="${i}">
       <div class="num">${done[i] ? '✓' : i + 1}</div>
-      <div class="grow"><p>${s.t}</p>${s.set ? setBox(s.set, r.name) : ''}</div></div>`).join('')}</div>
+      <div class="grow"><p>${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1)) : ''}</div></div>`).join('')}</div>
     ${nDone === total ? '<div class="note ok">✅ Все шаги выполнены. Приятного аппетита!</div>' : ''}
     ${r.tip ? `<div class="note tip">💡 ${r.tip}</div>` : ''}`;
+}
+// Режим готовки: один шаг на экран крупным текстом. Экран −1 — список продуктов.
+function viewCook(id, fit) {
+  const r = byId(id);
+  if (!r) return '<div class="empty">Рецепт не найден</div>';
+  const m = fit ? st.adapt[id] : null;
+  if (rv.id !== id || rv.fit !== !!m) Object.assign(rv, { id, fit: !!m, portions: m ? 1 : r.serves });
+  if (rv.cookId !== id) Object.assign(rv, { cookId: id, cook: -1 });
+  const i = rv.cook, total = r.steps.length, s = r.steps[i];
+  const body = i < 0
+    ? `<h1 style="margin:18px 0 6px">Подготовьте продукты</h1><p class="muted" style="margin-bottom:12px">На ${rv.portions} ${rv.portions === 1 ? 'порцию' : rv.portions < 5 ? 'порции' : 'порций'}</p>
+      <div class="card">${amounts(r, rv.portions, m).map(a => `<div class="ing"><span>${ING[a.id].n}</span><span>${amountText(a)}</span></div>`).join('')}
+      ${r.extra.map(x => { const p = x.split(' — '); return `<div class="ing"><span>${p[0]}</span><span>${p[1] || ''}</span></div>`; }).join('')}</div>`
+    : `<p class="cook-text">${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1)) : ''}`;
+  return `<div class="row between"><button class="icon-btn" data-act="cook-exit">✕</button>
+      <span class="badge">${i < 0 ? 'Продукты' : 'Шаг ' + (i + 1) + ' из ' + total}</span></div>
+    <p class="muted small" style="margin:10px 0 6px">${r.name}</p>
+    <div class="track"><i style="width:${(i + 1) / total * 100}%"></i></div>
+    ${body}
+    <div class="cook-nav"><button class="btn ghost" data-act="cook-prev" ${i < 0 ? 'disabled' : ''}>‹ Назад</button>
+      <button class="btn" data-act="cook-next">${i === total - 1 ? '✓ Готово' : i < 0 ? 'Начать ›' : 'Сделано, дальше ›'}</button></div>`;
 }
 function setBox(s, name) {
   return `<div class="set"><div class="panel">
@@ -502,15 +534,30 @@ function drawUpdate() {
 }
 const updateBanner = () => hasUpdate() ? `<a class="note tip" style="display:block" href="#/guide">🆕 Доступна версия ${esc(st.updNew)} — нажмите, чтобы обновить</a>` : '';
 
-/* ---------- Таймер ---------- */
+/* ---------- Таймеры ---------- */
 const bridge = (fn, ...a) => { try { if (window.AndroidBridge) window.AndroidBridge[fn](...a); } catch (e) { /* в браузере моста нет */ } };
+const MAX_TIMERS = 4;
+// До версии 1.3 таймер был один и хранился в st.timer
+st.timers = st.timers || (st.timer ? [Object.assign({ id: 1 }, st.timer)] : []);
+st.timer = null;
 function startTimer(min, label) {
-  st.timer = { end: Date.now() + min * 60000, label };
+  if (st.timers.length >= MAX_TIMERS) { toast('Одновременно работает не больше ' + MAX_TIMERS + ' таймеров'); return false; }
+  const id = st.timerSeq = (st.timerSeq || 1) % 1000 + 1;
+  st.timers.push({ id, end: Date.now() + min * 60000, label });
   save();
-  bridge('startTimer', Math.round(min * 60), label);
+  bridge('startTimer', id, Math.round(min * 60), label);
+  tick();
+  return true;
+}
+function stopTimer(id) { st.timers = st.timers.filter(t => t.id !== id); save(); bridge('cancelTimer', id); tick(); }
+function addMinute(id) {
+  const t = st.timers.find(x => x.id === id);
+  if (!t) return;
+  t.end += 60000;
+  save();
+  bridge('startTimer', id, Math.ceil((t.end - Date.now()) / 1000), t.label);
   tick();
 }
-function stopTimer() { st.timer = null; save(); bridge('cancelTimer'); tick(); }
 function beep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -523,19 +570,30 @@ function beep() {
   } catch (e) { /* звук недоступен */ }
   if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
 }
+function clock(ms) {
+  const left = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(left / 3600), m = Math.floor(left % 3600 / 60), pad = v => String(v).padStart(2, '0');
+  return (h ? h + ':' + pad(m) : m) + ':' + pad(left % 60);
+}
+let barKey = '', finished = [];
 function tick() {
-  const bar = $('#timerbar'), t = st.timer;
-  if (!t) { bar.hidden = true; return; }
-  const left = Math.ceil((t.end - Date.now()) / 1000);
-  if (left <= 0) {
-    st.timer = null; save(); bar.hidden = true; beep();
-    $('#modal').innerHTML = `<div class="box"><div class="big">🔔</div><h1>Время вышло!</h1><p class="muted" style="margin:8px 0 18px">${esc(t.label)}</p><button class="btn" data-act="modal-close">Готово</button></div>`;
+  const bar = $('#timerbar'), now = Date.now(), done = st.timers.filter(t => t.end <= now);
+  if (done.length) {
+    st.timers = st.timers.filter(t => t.end > now);
+    save();
+    beep();
+    finished = finished.concat(done.map(t => t.label));
+    $('#modal').innerHTML = `<div class="box"><div class="big">🔔</div><h1>Время вышло!</h1><p class="muted" style="margin:8px 0 18px">${finished.map(esc).join('<br>')}</p><button class="btn" data-act="modal-close">Готово</button></div>`;
     $('#modal').hidden = false;
-    return;
   }
-  const h = Math.floor(left / 3600), m = Math.floor(left % 3600 / 60), s = left % 60, pad = v => String(v).padStart(2, '0');
-  bar.hidden = false;
-  bar.innerHTML = `<div class="time">${h ? h + ':' + pad(m) : m}:${pad(s)}</div><div class="grow lbl">${esc(t.label)}</div><button data-act="timer-add">+1 мин</button><button data-act="timer-stop">Стоп</button>`;
+  const list = st.timers.slice().sort((x, y) => x.end - y.end), key = list.map(t => t.id).join();
+  // Разметку пересобираем только при смене состава таймеров, иначе нажатие на кнопку может потеряться
+  if (key !== barKey) {
+    barKey = key;
+    bar.hidden = !list.length;
+    bar.innerHTML = list.map(t => `<div class="trow"><div class="time" data-t="${t.id}"></div><div class="grow lbl">${esc(t.label)}</div><button data-act="timer-add" data-v="${t.id}">+1 мин</button><button data-act="timer-stop" data-v="${t.id}">Стоп</button></div>`).join('');
+    $('#view').style.paddingBottom = list.length ? `calc(var(--nav-h) + ${40 + list.length * 64}px + env(safe-area-inset-bottom))` : '';
+  }
+  list.forEach(t => { bar.querySelector(`[data-t="${t.id}"]`).textContent = clock(t.end - now); });
 }
 setInterval(tick, 500);
 
@@ -544,12 +602,14 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = fal
 
 /* ---------- Маршруты и события ---------- */
 function render(keepScroll) {
-  const [, page, id, mode] = location.hash.split('/');
+  const [, page, id, ...rest] = location.hash.split('/');
+  const cook = page === 'r' && rest.includes('cook'), mode = rest.includes('fit') ? 'fit' : '';
+  document.body.classList.toggle('cooking', cook);
   const tab = page === 'kbju' || page === 'shop' || page === 'guide' ? page : 'recipes';
   const y = window.scrollY;
-  $('#view').innerHTML = page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : viewRecipes();
+  $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : viewRecipes();
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === (page === 'r' && mode === 'fit' ? 'kbju' : tab)));
-  window.scrollTo(0, keepScroll ? y : 0);
+  window.scrollTo(0, keepScroll && !cook ? y : 0);
 }
 window.addEventListener('hashchange', () => render(false));
 
@@ -562,10 +622,27 @@ const ACTIONS = {
   portions: v => { rv.portions = Math.min(12, Math.max(1, rv.portions + +v)); },
   step: v => { const d = st.steps[rv.id] = st.steps[rv.id] || {}; if (d[v]) delete d[v]; else d[v] = 1; },
   'steps-reset': () => { delete st.steps[rv.id]; },
-  timer: (v, el) => { startTimer(+v, el.dataset.label); toast('Таймер запущен — не забудьте нажать «Старт» на аэрогриле'); return false; },
-  'timer-stop': () => { stopTimer(); return false; },
-  'timer-add': () => { st.timer.end += 60000; save(); bridge('startTimer', Math.ceil((st.timer.end - Date.now()) / 1000), st.timer.label); tick(); return false; },
-  'modal-close': () => { $('#modal').hidden = true; return false; },
+  'cook-start': () => {
+    const r = byId(rv.id), done = st.steps[r.id] || {}, next = r.steps.findIndex((s, i) => !done[i]);
+    Object.assign(rv, { cookId: r.id, cook: doneCount(r) && next >= 0 ? next : -1 });
+    location.hash = '#/r/' + r.id + (rv.fit ? '/fit' : '') + '/cook';
+    return false;
+  },
+  'cook-prev': () => { rv.cook = Math.max(-1, rv.cook - 1); },
+  'cook-next': () => {
+    const r = byId(rv.cookId);
+    if (rv.cook >= 0) (st.steps[r.id] = st.steps[r.id] || {})[rv.cook] = 1;
+    if (rv.cook < r.steps.length - 1) { rv.cook++; return; }
+    save();
+    toast('Готово! Приятного аппетита');
+    history.back();
+    return false;
+  },
+  'cook-exit': () => { history.back(); return false; },
+  timer: (v, el) => { if (startTimer(+v, el.dataset.label)) toast('Таймер запущен — не забудьте нажать «Старт» на аэрогриле'); return false; },
+  'timer-stop': v => { stopTimer(+v); return false; },
+  'timer-add': v => { addMinute(+v); return false; },
+  'modal-close': () => { $('#modal').hidden = true; finished = []; return false; },
   'shop-recipe': () => { const r = byId(rv.id); addToShop(amounts(r, rv.portions, rv.fit ? st.adapt[r.id] : null), r.extra); return false; },
   'shop-menu': () => { st.menu.slots.forEach(s => s.items.forEach(it => { const r = byId(it.id); addToShop(amounts(r, st.persons, it.m), r.extra); })); return false; },
   'shop-clear': () => { st.shop = { items: {}, extras: [], done: {} }; },
@@ -596,6 +673,7 @@ document.addEventListener('click', e => {
   render(true);
 });
 document.addEventListener('change', e => {
+  if (e.target.dataset.sel) { st[e.target.dataset.sel] = e.target.value; save(); $('#list').innerHTML = listHtml(); return; }
   const bind = e.target.dataset.bind;
   if (!bind) return;
   const [obj, key] = bind.split('.');

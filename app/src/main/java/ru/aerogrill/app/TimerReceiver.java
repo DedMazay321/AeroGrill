@@ -34,6 +34,6 @@ public class TimerReceiver extends BroadcastReceiver {
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .build();
-        nm.notify(1, n);
+        nm.notify(intent.getIntExtra("id", 1), n);
     }
 }

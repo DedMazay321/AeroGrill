@@ -94,9 +94,10 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
-    private PendingIntent alarmIntent(String label) {
-        Intent i = new Intent(this, TimerReceiver.class).putExtra("label", label);
-        return PendingIntent.getBroadcast(this, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    /** У каждого таймера свой номер: он отличает будильники и уведомления друг от друга. */
+    private PendingIntent alarmIntent(int id, String label) {
+        Intent i = new Intent(this, TimerReceiver.class).putExtra("label", label).putExtra("id", id);
+        return PendingIntent.getBroadcast(this, id, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private void js(String fn, String arg) {
@@ -148,7 +149,7 @@ public class MainActivity extends Activity {
     /** Методы, которые вызывает интерфейс: таймер должен сработать, даже если приложение свёрнуто. */
     private class Bridge {
         @JavascriptInterface
-        public void startTimer(int seconds, String label) {
+        public void startTimer(int id, int seconds, String label) {
             runOnUiThread(() -> {
                 if (Build.VERSION.SDK_INT >= 33
                         && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
@@ -156,7 +157,7 @@ public class MainActivity extends Activity {
                 }
                 AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
                 long at = System.currentTimeMillis() + seconds * 1000L;
-                PendingIntent pi = alarmIntent(label);
+                PendingIntent pi = alarmIntent(id, label);
                 try {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
                 } catch (SecurityException e) {
@@ -187,8 +188,8 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void cancelTimer() {
-            runOnUiThread(() -> ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).cancel(alarmIntent("")));
+        public void cancelTimer(int id) {
+            runOnUiThread(() -> ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).cancel(alarmIntent(id, "")));
         }
     }
 }

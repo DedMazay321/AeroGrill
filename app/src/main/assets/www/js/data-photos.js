@@ -402,9 +402,9 @@ const PHOTOS = {
   "u": "https://commons.wikimedia.org/wiki/File:Chili_Pickle_and_Cheese_Baked_Crab_with_Kolmi_greens.JPG"
  },
  "salmon-skewers": {
-  "a": "Adansonia rayanne2",
+  "a": "Famartin",
   "l": "CC BY-SA 4.0",
-  "u": "https://commons.wikimedia.org/wiki/File:Preparation_du_brochette_de_poissons_14.jpg"
+  "u": "https://commons.wikimedia.org/wiki/File:2020-03-09_21_11_13_Salmon_kabobs_from_Zo%C3%ABs_Kitchen_in_the_Franklin_Farm_section_of_Oak_Hill,_Fairfax_County,_Virginia.jpg"
  },
  "tilapia": {
   "a": "Ganesh Dhamodkar",
@@ -457,9 +457,9 @@ const PHOTOS = {
   "u": "https://commons.wikimedia.org/wiki/File:Roasted_Pumpkin,_Onion_and_Garlic.jpg"
  },
  "jacket-potato": {
-  "a": "Andy Li",
-  "l": "CC0",
-  "u": "https://commons.wikimedia.org/wiki/File:Oven-baked_Jacket_Potato_(Brie_%26_caramelised_onion_chutney)_-_The_Trellis_Caf%C3%A9_2024-05-23.jpg"
+  "a": "Renee Comet (photographer)",
+  "l": "Public domain",
+  "u": "https://commons.wikimedia.org/wiki/File:BakedPotatoWithButter.jpg"
  },
  "hasselback": {
   "a": "Aurus Sy",
@@ -647,9 +647,9 @@ const PHOTOS = {
   "u": "https://commons.wikimedia.org/wiki/File:Le_Croissant_French_Bakery_-_November_2023_-_Sarah_Stierch_06.jpg"
  },
  "bananas-chocolate": {
-  "a": "Andrew Malone",
-  "l": "CC BY 2.0",
-  "u": "https://commons.wikimedia.org/wiki/File:Banana_boat.jpg"
+  "a": "Kim Scarborough from Chicago, IL",
+  "l": "CC BY-SA 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Grilled_banana_(1417674861).jpg"
  },
  "mannik": {
   "a": "Zserghei",
@@ -692,9 +692,9 @@ const PHOTOS = {
   "u": "https://commons.wikimedia.org/wiki/File:Tortilla_chips.JPG"
  },
  "baked-pears": {
-  "a": "J Doll",
-  "l": "CC BY 3.0",
-  "u": "https://commons.wikimedia.org/wiki/File:Tea_Poached_Pears_In_Chocolate_Sauce_(140490793).jpeg"
+  "a": "Мирослава Садовець",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:%D0%A1%D1%82%D0%B0%D1%80%D0%BE%D0%B2%D0%B8%D0%BD%D0%BD%D0%B8%D0%B9_%D0%BE%D1%81%D1%82%D1%80%D0%BE%D0%B7%D1%8C%D0%BA%D0%B8%D0%B9_%D0%B4%D0%B5%D1%81%D0%B5%D1%80%D1%82_01.jpg"
  },
  "dried-tomatoes": {
   "a": "Andrew Deacon",
