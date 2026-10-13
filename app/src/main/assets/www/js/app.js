@@ -6,7 +6,8 @@ const st = Object.assign({
   profile: { sex: 'm', age: 30, weight: 75, height: 175, act: 1.375, goal: 'keep' },
   target: null, meals: 4, excl: {}, persons: 1, kmode: 'day', calcOpen: false,
   dishT: { k: 550, p: 40, f: 18, c: 50 }, dishType: 'm', dishRes: null, menu: null,
-  adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def', autoUpd: true
+  adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def', autoUpd: true,
+  cooked: {}, week: null, weekOpen: 0, pantry: {}, ptab: 'have'
 }, load());
 
 // Данные хранятся в двух местах: в хранилище страницы и в Android-оболочке. После обновления страницы
@@ -115,7 +116,9 @@ function fitCombo(ids, T) {
   return { items, total, err: errOf(total, T) };
 }
 
-const allowed = r => !Object.keys(st.excl).some(k => st.excl[k] && r.ing.some(i => EXCLUDE[k].x.includes(ING[i[0]].x)));
+// Блюда с оценкой 1–2 в меню не предлагаются
+const ck = id => st.cooked[id] || { n: 0, rate: 0, last: 0 };
+const allowed = r => !(ck(r.id).rate && ck(r.id).rate <= 2) && !Object.keys(st.excl).some(k => st.excl[k] && r.ing.some(i => EXCLUDE[k].x.includes(ING[i[0]].x)));
 const pool = k => RECIPES.filter(r => r.meal.includes(k) && allowed(r));
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
@@ -157,34 +160,51 @@ function buildMenu(slots, T) {
   let i = 0;
   return { err: fit.err, total: fit.total, slots: slots.map(s => ({ key: s.key, items: s.ids.map(() => fit.items[i++]) })) };
 }
-function genMenu() {
-  const T = tArr(st.target), plan = PLAN[st.meals];
+// Лучшее из `iters` случайных меню на день. banned — блюда, которые брать нельзя (уже стоят в других днях недели);
+// если без них приём пищи собрать не из чего, запрет для него снимается.
+function makeMenu(T, banned, iters) {
+  const plan = PLAN[st.meals];
   let best = null;
-  for (let it = 0; it < 400; it++) {
-    const used = {}, slots = [];
+  for (let it = 0; it < iters; it++) {
+    const day = {}, slots = [];
     for (const key of plan) {
-      const opts = slotOptions(key, used);
+      let opts = slotOptions(key, Object.assign({}, banned, day));
+      if (!opts.length) opts = slotOptions(key, day);
       if (!opts.length) continue;
       const ids = pick(opts);
-      ids.forEach(id => { used[id] = 1; });
+      ids.forEach(id => { day[id] = 1; });
       slots.push({ key, ids });
     }
     if (!slots.length) break;
     const m = buildMenu(slots, T);
     if (!best || m.err < best.err) best = m;
   }
-  st.menu = best;
+  return best;
 }
-function swapSlot(idx) {
-  const T = tArr(st.target), cur = st.menu.slots, used = {};
+const idsOf = menus => { const u = {}; menus.forEach(m => m.slots.forEach(s => s.items.forEach(x => { u[x.id] = 1; }))); return u; };
+function genMenu() { st.menu = makeMenu(tArr(st.target), {}, 400); }
+function genWeek() {
+  const T = tArr(st.target), days = [];
+  for (let d = 0; d < 7; d++) {
+    const m = makeMenu(T, idsOf(days), 200);
+    if (!m) break;
+    days.push(m);
+  }
+  st.week = days.length === 7 ? { days } : null;
+  st.weekOpen = 0;
+}
+// Замена одного приёма пищи в меню; banned — блюда других дней
+function swapIn(menu, idx, banned) {
+  const T = tArr(st.target), cur = menu.slots, used = Object.assign({}, banned);
   cur.forEach((s, i) => { if (i !== idx) s.items.forEach(x => { used[x.id] = 1; }); });
   used[cur[idx].items[0].id] = 1;
   const variants = slotOptions(cur[idx].key, used).map(ids =>
     buildMenu(cur.map((s, i) => ({ key: s.key, ids: i === idx ? ids : s.items.map(x => x.id) })), T));
-  if (!variants.length) return toast('Других подходящих блюд нет');
-  variants.sort((a, b) => a.err - b.err);
-  st.menu = pick(variants.slice(0, 4));
+  if (!variants.length) { toast('Других подходящих блюд нет'); return menu; }
+  variants.sort((x, y) => x.err - y.err);
+  return pick(variants.slice(0, 4));
 }
+const otherDays = d => idsOf(st.week.days.filter((m, i) => i !== d));
 
 /* ---------- Норма КБЖУ ---------- */
 function calcTarget() {
@@ -233,6 +253,8 @@ function miniDish(it) {
 // Плитка блюда: фото, а если его нет — эмодзи
 const tile = r => `<div class="tile">${PHOTOS[r.id] ? `<img loading="lazy" src="img/${r.id}.jpg" alt="">` : r.e}</div>`;
 
+function markCooked(id) { const c = st.cooked[id] = st.cooked[id] || { n: 0, rate: 0, last: 0 }; c.n++; c.last = Date.now(); }
+
 /* ---------- Экран: каталог ---------- */
 function recipeMatches(r) {
   if (st.cat !== 'all' && r.cat !== st.cat) return false;
@@ -241,12 +263,14 @@ function recipeMatches(r) {
   if (st.flt.fast && r.prep + r.cook > 30) return false;
   if (st.flt.protein && perServing(r)[1] < 25) return false;
   if (st.flt.light && perServing(r)[0] > 350) return false;
+  if (st.flt.cooked && !ck(r.id).n) return false;
+  if (st.flt.fresh && ck(r.id).n) return false;
   const q = st.q.trim().toLowerCase();
   return !q || r.name.toLowerCase().includes(q) || r.prog.toLowerCase().includes(q) || r.ing.some(i => ING[i[0]].n.toLowerCase().includes(q));
 }
 function recipeCard(r) {
   return `<a class="rcard" href="#/r/${r.id}">${tile(r)}<div class="grow"><h3>${r.name}</h3>
-    <div class="meta"><span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
+    <div class="meta"><span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${ck(r.id).rate ? `<span class="rate">★ ${ck(r.id).rate}</span>` : ''}${ck(r.id).n ? `<span>✓ готовил${ck(r.id).n > 1 ? ' ×' + ck(r.id).n : ''}</span>` : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
     <div class="kb">${kbLine(perServing(r))}</div></div>
     <button class="fav ${st.fav[r.id] ? 'on' : ''}" data-act="fav" data-id="${r.id}">⭐</button></a>`;
 }
@@ -255,7 +279,9 @@ const SORTS = {
   time: ['Сначала быстрые', (a, b) => a.prep + a.cook - b.prep - b.cook],
   kcal: ['Меньше калорий', (a, b) => perServing(a)[0] - perServing(b)[0]],
   protein: ['Больше белка', (a, b) => perServing(b)[1] - perServing(a)[1]],
-  name: ['По алфавиту', (a, b) => a.name.localeCompare(b.name, 'ru')]
+  name: ['По алфавиту', (a, b) => a.name.localeCompare(b.name, 'ru')],
+  rate: ['Сначала с высокой оценкой', (a, b) => ck(b.id).rate - ck(a.id).rate || ck(b.id).n - ck(a.id).n],
+  recent: ['Недавно готовил', (a, b) => ck(b.id).last - ck(a.id).last]
 };
 function listHtml() {
   const list = RECIPES.filter(recipeMatches), sort = (SORTS[st.sort] || SORTS.def)[1];
@@ -265,7 +291,7 @@ function listHtml() {
     + (list.length ? list.map(recipeCard).join('') : '<div class="empty">Ничего не найдено.<br>Измените запрос или фильтры.</div>');
 }
 function viewRecipes() {
-  const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал']];
+  const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал'], ['cooked', '✓ Готовил'], ['fresh', '🆕 Не пробовал']];
   return `<div id="updb">${updateBanner()}</div><h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
     <div class="search-wrap"><input class="search" type="search" placeholder="Блюдо, продукт или программа" value="${esc(st.q)}" data-search></div>
     <div class="chips"><button class="chip ${st.cat === 'all' ? 'on' : ''}" data-act="cat" data-v="all">Все</button>
@@ -283,7 +309,7 @@ function viewRecipe(id, fit) {
   const m = fit ? st.adapt[id] : null;
   if (rv.id !== id || rv.fit !== !!m) Object.assign(rv, { id, fit: !!m, portions: m ? 1 : r.serves });
   const done = st.steps[id] || {}, nDone = doneCount(r), total = r.steps.length;
-  const list = amounts(r, rv.portions, m), n = nutri(list).map(v => v / rv.portions), ph = PHOTOS[id];
+  const list = amounts(r, rv.portions, m), n = nutri(list).map(v => v / rv.portions), ph = PHOTOS[id], c = ck(id);
   const load = list.reduce((a, x) => a + x.g, 0) / r.ing.reduce((a, i) => a + i[1], 0);
   return `<div class="top"><button class="icon-btn" data-act="back">‹</button>
       <button class="icon-btn fav ${st.fav[id] ? 'on' : ''}" data-act="fav" data-id="${id}">⭐</button></div>
@@ -299,7 +325,7 @@ function viewRecipe(id, fit) {
     <h2>КБЖУ на 1 порцию</h2>${nutriCells(n)}
     <div class="row between"><h2>Продукты</h2>
       <div class="row"><span class="muted small">порций</span><div class="stepper"><button data-act="portions" data-v="-1">−</button><b>${rv.portions}</b><button data-act="portions" data-v="1">+</button></div></div></div>
-    <div class="card">${list.map(a => `<div class="ing"><span>${ING[a.id].n}</span><span>${amountText(a)}</span></div>`).join('')}
+    <div class="card">${list.map(a => `<div class="ing"><span>${ING[a.id].n}${st.pantry[a.id] ? '<span class="have">дома</span>' : ''}</span><span>${amountText(a)}</span></div>`).join('')}
       ${r.extra.map(x => { const s = x.split(' — '); return `<div class="ing"><span>${s[0]}</span><span>${s[1] || ''}</span></div>`; }).join('')}</div>
     ${load > 1.4 ? '<div class="note">⚠️ Продуктов больше, чем в исходном рецепте. Не заполняйте чашу выше половины и не кладите куски в два слоя — готовьте в два захода или добавьте 3–5 минут и чаще встряхивайте.</div>' : ''}
     <button class="btn ghost" data-act="shop-recipe">🛒 Добавить продукты в список покупок</button>
@@ -312,7 +338,12 @@ function viewRecipe(id, fit) {
       <div class="num">${done[i] ? '✓' : i + 1}</div>
       <div class="grow"><p>${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1)) : ''}</div></div>`).join('')}</div>
     ${nDone === total ? '<div class="note ok">✅ Все шаги выполнены. Приятного аппетита!</div>' : ''}
-    ${r.tip ? `<div class="note tip">💡 ${r.tip}</div>` : ''}`;
+    ${r.tip ? `<div class="note tip">💡 ${r.tip}</div>` : ''}
+    <h2>Моя оценка</h2>
+    <div class="card"><div class="stars">${[1, 2, 3, 4, 5].map(v => `<button class="${v <= c.rate ? 'on' : ''}" data-act="rate" data-v="${v}">★</button>`).join('')}</div>
+      <p class="small muted" style="margin:6px 0 12px">${c.n ? 'Готовили ' + c.n + ' ' + (c.n % 10 === 1 && c.n !== 11 ? 'раз' : c.n % 10 >= 2 && c.n % 10 <= 4 && (c.n < 10 || c.n > 20) ? 'раза' : 'раз') + ', последний — ' + new Date(c.last).toLocaleDateString('ru-RU') : 'Вы ещё не готовили это блюдо'}${c.rate && c.rate <= 2 ? '. С такой оценкой блюдо не попадёт в меню.' : ''}</p>
+      <button class="btn ghost" data-act="cooked">✓ Отметить, что приготовил</button>
+      ${c.n ? '<button class="btn sm ghost" style="margin-top:8px;width:100%" data-act="uncooked">Убрать одну отметку</button>' : ''}</div>`;
 }
 // Режим готовки: один шаг на экран крупным текстом. Экран −1 — список продуктов.
 function viewCook(id, fit) {
@@ -361,9 +392,9 @@ function viewKbju() {
     <div class="card"><div class="row between" style="margin-bottom:10px"><b>Моя норма на день</b>
       <button class="btn sm ghost" data-act="calc-toggle">${st.calcOpen ? 'Скрыть' : '🧮 Рассчитать'}</button></div>
       ${targetFields('target')}${calc}</div>
-    ${seg('kmode', st.kmode, [['day', 'Меню на день'], ['dish', 'Один приём пищи']])}
+    ${seg('kmode', st.kmode, [['day', 'На день'], ['week', 'На неделю'], ['dish', 'Один приём']])}
     <div style="height:12px"></div>
-    ${st.kmode === 'day' ? kbjuDay() : kbjuDish()}`;
+    ${st.kmode === 'day' ? kbjuDay() : st.kmode === 'week' ? kbjuWeek() : kbjuDish()}`;
 }
 const exclChips = () => `<div class="chips wrap" style="margin-bottom:12px">${Object.keys(EXCLUDE).map(k => `<button class="chip ${st.excl[k] ? 'on' : ''}" data-act="excl" data-v="${k}">${EXCLUDE[k].n}</button>`).join('')}</div>`;
 function kbjuDay() {
@@ -383,6 +414,32 @@ function kbjuDay() {
       ${seg('meals', st.meals, [[3, '3'], [4, '4'], [5, '5']])}
       <div class="small muted" style="margin:12px 0 6px">Исключить</div>${exclChips()}
       <button class="btn" data-act="gen">${m ? '🎲 Собрать другое меню' : 'Собрать меню'}</button></div>${res}`;
+}
+const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+const personsCard = () => `<div class="card"><div class="row between"><span>Готовим на человек</span>
+  <div class="stepper"><button data-act="persons" data-v="-1">−</button><b>${st.persons}</b><button data-act="persons" data-v="1">+</button></div></div></div>`;
+function kbjuWeek() {
+  const w = st.week, T = tArr(st.target);
+  let res = '';
+  if (w) {
+    const avg = [0, 0, 0, 0], all = [].concat(...w.days.map(d => [].concat(...d.slots.map(s => s.items.map(x => x.id)))));
+    w.days.forEach(d => d.total.forEach((v, i) => { avg[i] += v / 7; }));
+    const repeats = all.length - new Set(all).size;
+    res = `<h2>В среднем за день</h2><div class="card">${bars(avg, T)}
+        <p class="small muted">Блюд на неделю: ${all.length}${repeats ? ', из них повторяются ' + repeats + ' — подходящих блюд не хватило' : ', без повторов'}.</p></div>
+      ${w.days.map((d, di) => {
+        const open = st.weekOpen === di;
+        return `<div class="card"><button class="dayhead" data-act="week-open" data-v="${di}"><span class="grow"><b>${DAYS[di]}</b><br><span class="kb">${kbLine(d.total)}</span></span><span class="muted">${open ? '▾' : '▸'}</span></button>
+          ${open ? d.slots.map((sl, i) => `<div class="slot-h"><h3>${SLOT[sl.key]}</h3><button class="btn sm ghost" data-act="week-swap" data-d="${di}" data-v="${i}">🔄 Заменить</button></div>${sl.items.map(miniDish).join('')}`).join('')
+            + `<button class="btn sm ghost" style="margin-top:12px;width:100%" data-act="week-day" data-v="${di}">🎲 Пересобрать весь день</button>`
+            : `<p class="small muted" style="margin-top:6px">${d.slots.map(sl => sl.items.map(x => byId(x.id).name).join(' + ')).join(' · ')}</p>`}</div>`;
+      }).join('')}
+      ${personsCard()}<button class="btn" data-act="shop-week">🛒 Продукты на неделю — в список покупок</button>`;
+  }
+  return `<div class="card"><div class="small muted" style="margin-bottom:6px">Приёмов пищи в день</div>
+      ${seg('meals', st.meals, [[3, '3'], [4, '4'], [5, '5']])}
+      <div class="small muted" style="margin:12px 0 6px">Исключить</div>${exclChips()}
+      <button class="btn" data-act="gen-week">${w ? '🎲 Собрать другую неделю' : 'Собрать меню на неделю'}</button></div>${res}`;
 }
 function kbjuDish() {
   const T = tArr(st.dishT), res = st.dishRes;
@@ -406,6 +463,9 @@ function addToShop(list, extras) {
   save();
   toast('Добавлено в список покупок');
 }
+function addMenus(menus) {
+  menus.forEach(m => m.slots.forEach(sl => sl.items.forEach(it => { const r = byId(it.id); addToShop(amounts(r, st.persons, it.m), r.extra); })));
+}
 function viewShop() {
   const ids = Object.keys(st.shop.items);
   if (!ids.length && !st.shop.extras.length) return `<h1>Список покупок</h1><div class="empty">Пока пусто.<br>Добавьте продукты из рецепта или из меню на день.</div>`;
@@ -421,6 +481,41 @@ function viewShop() {
       }).join('')}</div>`;
     }).join('')}
     ${st.shop.extras.length ? `<h2>Специи и мелочи</h2><div class="card">${st.shop.extras.map(x => check('x:' + x, x, '')).join('')}</div>` : ''}`;
+}
+
+/* ---------- Экран: что есть дома ---------- */
+const BASICS = ['oil', 'flour', 'sugar', 'egg', 'onion', 'garlic', 'butter', 'milk', 'potato'];
+let pq = '';
+// Рецепты, для которых дома есть всё или не хватает до трёх продуктов
+function pantryMatch() {
+  return RECIPES.map(r => {
+    const need = [...new Set(r.ing.map(i => i[0]))], miss = need.filter(id => !st.pantry[id]);
+    return { r, miss, need: need.length };
+  }).filter(x => x.miss.length <= 3 && x.miss.length < x.need).sort((x, y) => x.miss.length - y.miss.length || y.need - x.need);
+}
+function pantryChips() {
+  const q = pq.trim().toLowerCase();
+  return Object.keys(SECTIONS).map(sec => {
+    const ids = Object.keys(ING).filter(id => ING[id].s === sec && (!q || ING[id].n.toLowerCase().includes(q))).sort((x, y) => ING[x].n.localeCompare(ING[y].n, 'ru'));
+    return !ids.length ? '' : `<h2>${SECTIONS[sec]}</h2><div class="chips wrap">${ids.map(id => `<button class="chip ${st.pantry[id] ? 'on' : ''}" data-act="pantry" data-v="${id}">${ING[id].n}</button>`).join('')}</div>`;
+  }).join('') || '<div class="empty">Такого продукта нет в рецептах</div>';
+}
+function viewPantry() {
+  const have = Object.keys(st.pantry).filter(id => st.pantry[id] && ING[id]).length, match = have ? pantryMatch() : [];
+  const full = match.filter(x => !x.miss.length), part = match.filter(x => x.miss.length).slice(0, 40);
+  const body = st.ptab === 'have'
+    ? `<div class="search-wrap"><input class="search" type="search" placeholder="Найти продукт" value="${esc(pq)}" data-psearch></div>
+      <div class="row" style="margin-bottom:4px"><button class="btn sm ghost grow" data-act="pantry-basics">+ Базовые продукты</button><button class="btn sm ghost grow" data-act="pantry-clear">Очистить</button></div>
+      <p class="small muted">Базовые — масло, мука, сахар, яйца, лук, чеснок, молоко, картофель. Соль и специи отмечать не нужно. Купленное в списке покупок попадает сюда само.</p>
+      <div id="pchips">${pantryChips()}</div>`
+    : !have ? '<div class="empty">Сначала отметьте продукты на вкладке «Мои продукты».</div>'
+    : `<h2>Всё есть — можно готовить (${full.length})</h2>${full.length ? full.map(x => recipeCard(x.r)).join('') : '<p class="muted small">Пока нет блюд, для которых дома есть всё. Посмотрите ниже — возможно, не хватает одного продукта.</p>'}
+      <h2>Не хватает 1–3 продуктов (${part.length})</h2>${part.map(x => `<div class="card"><a class="mini" href="#/r/${x.r.id}">${tile(x.r)}<div class="grow"><b>${x.r.name}</b><div class="kb">${kbLine(perServing(x.r))}</div></div><span class="muted">›</span></a>
+        <p class="small" style="margin:6px 0 10px">Не хватает: <b>${x.miss.map(id => ING[id].n.toLowerCase()).join(', ')}</b></p>
+        <button class="btn sm ghost" style="width:100%" data-act="pantry-buy" data-id="${x.r.id}">🛒 Добавить недостающее в покупки</button></div>`).join('')}`;
+  return `<h1>Что есть дома</h1><p class="muted small" style="margin-bottom:12px">Отметьте продукты, которые у вас есть, — приложение подскажет, что из них приготовить</p>
+    ${seg('ptab', st.ptab, [['have', 'Мои продукты (' + have + ')'], ['cook', 'Что приготовить (' + full.length + ')']])}
+    <div style="height:12px"></div>${body}`;
 }
 
 /* ---------- Экран: справка ---------- */
@@ -635,9 +730,9 @@ function render(keepScroll) {
   const [, page, id, ...rest] = location.hash.split('/');
   const cook = page === 'r' && rest.includes('cook'), mode = rest.includes('fit') ? 'fit' : '';
   document.body.classList.toggle('cooking', cook);
-  const tab = page === 'kbju' || page === 'shop' || page === 'guide' ? page : 'recipes';
+  const tab = page === 'kbju' || page === 'shop' || page === 'guide' || page === 'pantry' ? page : 'recipes';
   const y = window.scrollY;
-  $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : viewRecipes();
+  $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : tab === 'pantry' ? viewPantry() : viewRecipes();
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === (page === 'r' && mode === 'fit' ? 'kbju' : tab)));
   window.scrollTo(0, keepScroll && !cook ? y : 0);
 }
@@ -664,7 +759,8 @@ const ACTIONS = {
     if (rv.cook >= 0) (st.steps[r.id] = st.steps[r.id] || {})[rv.cook] = 1;
     if (rv.cook < r.steps.length - 1) { rv.cook++; return; }
     save();
-    toast('Готово! Приятного аппетита');
+    markCooked(r.id);
+    toast('Готово! Блюдо отмечено как приготовленное — поставьте оценку');
     history.back();
     return false;
   },
@@ -674,20 +770,37 @@ const ACTIONS = {
   'timer-add': v => { addMinute(+v); return false; },
   'modal-close': () => { $('#modal').hidden = true; finished = []; return false; },
   'shop-recipe': () => { const r = byId(rv.id); addToShop(amounts(r, rv.portions, rv.fit ? st.adapt[r.id] : null), r.extra); return false; },
-  'shop-menu': () => { st.menu.slots.forEach(s => s.items.forEach(it => { const r = byId(it.id); addToShop(amounts(r, st.persons, it.m), r.extra); })); return false; },
+  'shop-menu': () => { addMenus([st.menu]); return false; },
   'shop-clear': () => { st.shop = { items: {}, extras: [], done: {} }; },
-  check: v => { st.shop.done[v] = !st.shop.done[v]; },
+  check: v => { st.shop.done[v] = !st.shop.done[v]; if (st.shop.done[v] && ING[v]) st.pantry[v] = true; },
+  ptab: v => { st.ptab = v; },
+  pantry: v => { st.pantry[v] = !st.pantry[v]; },
+  'pantry-basics': () => { BASICS.forEach(id => { st.pantry[id] = true; }); },
+  'pantry-clear': () => { st.pantry = {}; },
+  'pantry-buy': (v, el) => {
+    const r = byId(el.dataset.id);
+    addToShop(amounts(r, r.serves).filter(x => !st.pantry[x.id]), []);
+    return false;
+  },
+  rate: v => { const c = st.cooked[rv.id] = st.cooked[rv.id] || { n: 0, rate: 0, last: 0 }; c.rate = c.rate === +v ? 0 : +v; },
+  cooked: () => { markCooked(rv.id); toast('Отмечено'); },
+  uncooked: () => { const c = st.cooked[rv.id]; if (c && c.n) c.n--; },
   'open-fit': (v, el) => { st.adapt[el.dataset.id] = JSON.parse(el.dataset.m); save(); location.hash = '#/r/' + el.dataset.id + '/fit'; return false; },
   kmode: v => { st.kmode = v; },
   'calc-toggle': () => { st.calcOpen = !st.calcOpen; },
   sex: v => { st.profile.sex = v; },
   goal: v => { st.profile.goal = v; },
-  calc: () => { calcTarget(); st.calcOpen = false; st.menu = null; toast('Норма рассчитана'); },
+  calc: () => { calcTarget(); st.calcOpen = false; st.menu = null; st.week = null; toast('Норма рассчитана'); },
   meals: v => { st.meals = +v; },
   excl: v => { st.excl[v] = !st.excl[v]; },
   persons: v => { st.persons = Math.min(8, Math.max(1, st.persons + +v)); },
   gen: () => { genMenu(); if (!st.menu) toast('Не из чего собрать меню — снимите часть исключений'); },
-  swap: v => { swapSlot(+v); },
+  swap: v => { st.menu = swapIn(st.menu, +v, {}); },
+  'gen-week': () => { genWeek(); if (!st.week) toast('Не из чего собрать неделю — снимите часть исключений'); },
+  'week-open': v => { st.weekOpen = st.weekOpen === +v ? -1 : +v; },
+  'week-swap': (v, el) => { const d = +el.dataset.d; st.week.days[d] = swapIn(st.week.days[d], +v, otherDays(d)); },
+  'week-day': v => { const m = makeMenu(tArr(st.target), otherDays(+v), 300); if (m) st.week.days[+v] = m; },
+  'shop-week': () => { addMenus(st.week.days); return false; },
   share: (v, el) => { N4.forEach(n => { st.dishT[n] = Math.round(st.target[n] * v / 100); }); st.dishType = el.dataset.t; st.dishRes = null; },
   dishType: v => { st.dishType = v; },
   find: () => { findDishes(); },
@@ -713,6 +826,7 @@ document.addEventListener('change', e => {
   save();
 });
 document.addEventListener('input', e => {
+  if (e.target.matches('[data-psearch]')) { pq = e.target.value; $('#pchips').innerHTML = pantryChips(); return; }
   if (!e.target.matches('[data-search]')) return;
   st.q = e.target.value;
   $('#list').innerHTML = listHtml();

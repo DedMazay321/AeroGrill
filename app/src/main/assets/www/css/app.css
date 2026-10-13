@@ -193,3 +193,9 @@ body.cooking .set .cell b { font-size: 17px; }
 .cook-nav .btn { min-height: 0; height: 100%; }
 .cook-nav .btn.ghost { flex: 0 0 34%; }
 .btn[disabled] { opacity: .4; }
+.dayhead { display: flex; width: 100%; gap: 10px; align-items: center; text-align: left; }
+.stars { display: flex; gap: 6px; }
+.stars button { font-size: 34px; line-height: 1; color: var(--line); }
+.stars button.on { color: var(--warn); }
+.meta .rate { color: var(--warn); font-weight: 700; }
+.have { font-size: 11px; color: var(--ok); border: 1px solid var(--ok); border-radius: 6px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
