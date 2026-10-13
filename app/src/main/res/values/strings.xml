@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">АэроГриль</string>
+    <string name="timer_channel">Таймер приготовления</string>
+    <string name="update_failed">Обновление не установлено</string>
+    <string name="timer_done">Время вышло — проверьте аэрогриль</string>
+</resources>

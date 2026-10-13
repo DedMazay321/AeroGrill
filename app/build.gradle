@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ru.aerogrill.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ru.aerogrill.app'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    // Один и тот же ключ для всех сборок: иначе Android не установит обновление поверх старой версии.
+    // Файл ключа не хранится в репозитории — берегите его копию.
+    signingConfigs {
+        debug {
+            def key = rootProject.file('signing/aerogrill.keystore')
+            if (key.exists()) {
+                storeFile key
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
