@@ -7,7 +7,7 @@ const st = Object.assign({
   target: null, meals: 4, excl: {}, persons: 1, kmode: 'day', calcOpen: false,
   dishT: { k: 550, p: 40, f: 18, c: 50 }, dishType: 'm', dishRes: null, menu: null,
   adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def', autoUpd: true,
-  cooked: {}, week: null, weekOpen: 0, pantry: {}, ptab: 'have'
+  cooked: {}, port: {}, week: null, weekOpen: 0, pantry: {}, ptab: 'have'
 }, load());
 
 // Данные хранятся в двух местах: в хранилище страницы и в Android-оболочке. После обновления страницы
@@ -41,11 +41,25 @@ function dur(min) {
 function roundG(g) { return g < 15 ? Math.max(1, Math.round(g)) : g < 100 ? Math.round(g / 5) * 5 : Math.round(g / 10) * 10; }
 // вес [чайной, столовой] ложки
 const SPOON = { oil: [5, 14], honey: [9, 25], soy_sauce: [6, 18], mustard: [6, 18], sour_cream: [8, 22], sugar: [7, 20], flour: [8, 25], semolina: [7, 20], bbq_sauce: [7, 20], tomato_sauce: [7, 20], butter: [5, 15] };
+// Количество с дробью: 0,25 → ¼, 1,5 → 1½
+function qty(v) {
+  const q = Math.max(0.25, Math.round(v * 4) / 4), w = Math.floor(q), f = { 0.25: '¼', 0.5: '½', 0.75: '¾' }[q - w] || '';
+  return (w || !f ? w : '') + f;
+}
+// «Соль — 1 ч. л.» на нужное число порций; строки без числа («по вкусу», «половина лимона») остаются как есть
+function extraLine(x, f) {
+  const p = x.split(' — '), m = p[1] && p[1].match(/^(\d+)?([½¼¾])?\s+(.+)$/);
+  if (!m || f === 1 || (!m[1] && !m[2])) return p;
+  const v = (+m[1] || 0) + ({ '½': 0.5, '¼': 0.25, '¾': 0.75 }[m[2]] || 0);
+  return [p[0], qty(v * f) + ' ' + m[3]];
+}
+const extras = (r, portions) => r.extra.map(x => extraLine(x, portions / r.serves));
+const PORT_WORD = n => n % 10 === 1 && n % 100 !== 11 ? 'порцию' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'порции' : 'порций';
 function amountText(a) {
   const ing = ING[a.id];
   if (a.pcs != null) return frac(a.pcs) + ' ' + ing.u[0] + ' (≈' + a.g + ' г)';
   const sp = SPOON[a.id];
-  if (!sp || a.g > sp[1] * 6) return a.g + ' г';
+  if (!sp || a.g > sp[1] * 6) return a.g >= 1000 ? num(a.g / 1000) + ' кг' : a.g + ' г';
   const big = a.g > sp[0] * 3, n = Math.max(0.5, Math.round(a.g / sp[big ? 1 : 0] * 2) / 2);
   return a.g + ' г (≈' + frac(n) + (big ? ' ст. л.)' : ' ч. л.)');
 }
@@ -253,6 +267,11 @@ function miniDish(it) {
 // Плитка блюда: фото, а если его нет — эмодзи
 const tile = r => `<div class="tile">${PHOTOS[r.id] ? `<img loading="lazy" src="img/${r.id}.jpg" alt="">` : r.e}</div>`;
 
+// Выбранное число порций запоминается для каждого рецепта (кроме подобранных под КБЖУ)
+function setPortions(v) {
+  rv.portions = Math.min(20, Math.max(1, v));
+  if (!rv.fit) st.port[rv.id] = rv.portions;
+}
 function markCooked(id) { const c = st.cooked[id] = st.cooked[id] || { n: 0, rate: 0, last: 0 }; c.n++; c.last = Date.now(); }
 
 /* ---------- Экран: каталог ---------- */
@@ -307,10 +326,20 @@ function viewRecipe(id, fit) {
   const r = byId(id);
   if (!r) return '<div class="empty">Рецепт не найден</div>';
   const m = fit ? st.adapt[id] : null;
-  if (rv.id !== id || rv.fit !== !!m) Object.assign(rv, { id, fit: !!m, portions: m ? 1 : r.serves });
+  if (rv.id !== id || rv.fit !== !!m) Object.assign(rv, { id, fit: !!m, portions: m ? 1 : st.port[id] || r.serves });
   const done = st.steps[id] || {}, nDone = doneCount(r), total = r.steps.length;
   const list = amounts(r, rv.portions, m), n = nutri(list).map(v => v / rv.portions), ph = PHOTOS[id], c = ck(id);
-  const load = list.reduce((a, x) => a + x.g, 0) / r.ing.reduce((a, i) => a + i[1], 0);
+  const weight = list.reduce((a, x) => a + x.g, 0), load = weight / r.ing.reduce((a, i) => a + i[1], 0);
+  // Исходный рецепт рассчитан на одну закладку в чашу 7 л: если продуктов заметно больше — нужно несколько заходов
+  const batches = Math.max(1, Math.ceil(load - 0.2)), p = rv.portions;
+  const loadNote = batches > 1
+    ? `<div class="note">⚠️ Всё сразу в чашу не поместится: готовьте в <b>${batches} ${batches < 5 ? 'захода' : 'заходов'}</b>, примерно по ${Math.ceil(p / batches)} ${PORT_WORD(Math.ceil(p / batches))}. Температура и время в шагах — на один заход. Куски кладите в один слой.</div>`
+    : load < 0.55 ? '<div class="note tip">Продуктов меньше, чем в исходном рецепте: проверьте готовность на 2–4 минуты раньше указанного.</div>' : '';
+  const portionsCard = `<div class="card"><div class="row between"><div><b>На сколько порций готовим?</b>
+      <div class="small muted">${m ? 'Подобрано под вашу норму КБЖУ — на 1 человека' : 'Рецепт рассчитан на ' + r.serves + ' ' + PORT_WORD(r.serves)}</div></div>
+      <div class="stepper"><button data-act="portions" data-v="-1">−</button><b>${p}</b><button data-act="portions" data-v="1">+</button></div></div>
+    <div class="chips wrap" style="margin-top:12px">${[1, 2, 3, 4, 6, 8].map(v => `<button class="chip ${v === p ? 'on' : ''}" data-act="portions-set" data-v="${v}">${v}</button>`).join('')}</div>
+    <p class="small" style="margin-top:12px">Нужно продуктов ≈ <b>${weight >= 1000 ? num(weight / 1000) + ' кг' : weight + ' г'}</b> · на все порции <b>${Math.round(n[0] * p)} ккал</b></p></div>${loadNote}`;
   return `<div class="top"><button class="icon-btn" data-act="back">‹</button>
       <button class="icon-btn fav ${st.fav[id] ? 'on' : ''}" data-act="fav" data-id="${id}">⭐</button></div>
     ${ph ? `<div class="photo"><img src="img/${id}.jpg" alt=""><a href="${esc(ph.u)}">Фото: ${esc(ph.a)} · ${esc(ph.l)}</a></div>` : ''}
@@ -322,13 +351,13 @@ function viewRecipe(id, fit) {
       <div class="cell"><small>Температура</small><b>${r.temp} °C</b></div>
       <div class="cell"><small>Время в аэрогриле</small><b>${dur(r.cook)}</b></div>
       <div class="cell"><small>Функция «Пар»</small><b class="${r.steam ? 'steam-c' : ''}">${r.steam ? '💨 включить' : 'не нужна'}</b></div></div></div>
+    ${portionsCard}
     <h2>КБЖУ на 1 порцию</h2>${nutriCells(n)}
-    <div class="row between"><h2>Продукты</h2>
-      <div class="row"><span class="muted small">порций</span><div class="stepper"><button data-act="portions" data-v="-1">−</button><b>${rv.portions}</b><button data-act="portions" data-v="1">+</button></div></div></div>
+    <h2>Продукты на ${p} ${PORT_WORD(p)}</h2>
     <div class="card">${list.map(a => `<div class="ing"><span>${ING[a.id].n}${st.pantry[a.id] ? '<span class="have">дома</span>' : ''}</span><span>${amountText(a)}</span></div>`).join('')}
-      ${r.extra.map(x => { const s = x.split(' — '); return `<div class="ing"><span>${s[0]}</span><span>${s[1] || ''}</span></div>`; }).join('')}</div>
-    ${load > 1.4 ? '<div class="note">⚠️ Продуктов больше, чем в исходном рецепте. Не заполняйте чашу выше половины и не кладите куски в два слоя — готовьте в два захода или добавьте 3–5 минут и чаще встряхивайте.</div>' : ''}
+      ${extras(r, p).map(e => `<div class="ing"><span>${e[0]}</span><span>${e[1] || ''}</span></div>`).join('')}</div>
     <button class="btn ghost" data-act="shop-recipe">🛒 Добавить продукты в список покупок</button>
+    ${list.some(a => st.pantry[a.id]) ? `<button class="btn ghost" style="margin-top:8px" data-act="shop-missing">🛒 Только то, чего нет дома (${list.filter(a => !st.pantry[a.id]).length})</button>` : ''}
     <div class="row between"><h2>Приготовление</h2>
       <span class="row"><span class="badge ${nDone === total ? 'ok' : ''}">${nDone} из ${total}</span>${nDone ? '<button class="btn sm ghost" data-act="steps-reset">Сбросить</button>' : ''}</span></div>
     <div class="track" style="margin-bottom:10px"><i style="width:${nDone / total * 100}%"></i></div>
@@ -356,7 +385,7 @@ function viewCook(id, fit) {
   const body = i < 0
     ? `<h1 style="margin:18px 0 6px">Подготовьте продукты</h1><p class="muted" style="margin-bottom:12px">На ${rv.portions} ${rv.portions === 1 ? 'порцию' : rv.portions < 5 ? 'порции' : 'порций'}</p>
       <div class="card">${amounts(r, rv.portions, m).map(a => `<div class="ing"><span>${ING[a.id].n}</span><span>${amountText(a)}</span></div>`).join('')}
-      ${r.extra.map(x => { const p = x.split(' — '); return `<div class="ing"><span>${p[0]}</span><span>${p[1] || ''}</span></div>`; }).join('')}</div>`
+      ${extras(r, rv.portions).map(e => `<div class="ing"><span>${e[0]}</span><span>${e[1] || ''}</span></div>`).join('')}</div>`
     : `<p class="cook-text">${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1)) : ''}`;
   return `<div class="row between"><button class="icon-btn" data-act="cook-exit">✕</button>
       <span class="badge">${i < 0 ? 'Продукты' : 'Шаг ' + (i + 1) + ' из ' + total}</span></div>
@@ -747,7 +776,9 @@ const ACTIONS = {
   fav: (v, el) => { st.fav[el.dataset.id] = !st.fav[el.dataset.id]; },
   back: () => { if (history.length > 1) history.back(); else location.hash = '#/'; return false; },
   unfit: () => { location.replace('#/r/' + rv.id); return false; },
-  portions: v => { rv.portions = Math.min(12, Math.max(1, rv.portions + +v)); },
+  portions: v => { setPortions(rv.portions + +v); },
+  'portions-set': v => { setPortions(+v); },
+  'shop-missing': () => { const r = byId(rv.id); addToShop(amounts(r, rv.portions, rv.fit ? st.adapt[r.id] : null).filter(a => !st.pantry[a.id]), r.extra); return false; },
   step: v => { const d = st.steps[rv.id] = st.steps[rv.id] || {}; if (d[v]) delete d[v]; else d[v] = 1; },
   'steps-reset': () => { delete st.steps[rv.id]; },
   'cook-start': () => {
