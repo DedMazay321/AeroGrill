@@ -25,7 +25,7 @@ a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; color: inherit; }
 button { border: 0; background: none; padding: 0; cursor: pointer; }
 
-#view { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(var(--nav-h) + 96px + env(safe-area-inset-bottom)); min-height: 100%; }
+#view { max-width: 640px; margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(var(--nav-h) + 96px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); min-height: 100%; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 .row { display: flex; align-items: center; gap: 10px; }
@@ -199,3 +199,13 @@ body.cooking .set .cell b { font-size: 17px; }
 .stars button.on { color: var(--warn); }
 .meta .rate { color: var(--warn); font-weight: 700; }
 .have { font-size: 11px; color: var(--ok); border: 1px solid var(--ok); border-radius: 6px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
+/* Большой экран: каталог в две колонки, меню по центру */
+#nav { justify-content: center; }
+#nav a { max-width: 140px; }
+@media (min-width: 900px) {
+  body.catalog #view { max-width: 1000px; }
+  body.catalog #list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  body.catalog #list > .row, body.catalog #list > .empty { grid-column: 1 / -1; }
+  body.catalog #list .rcard { margin: 0; }
+  .rcard:hover { background: var(--card2); }
+}

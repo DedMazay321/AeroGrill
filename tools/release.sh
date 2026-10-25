@@ -13,6 +13,9 @@ if git rev-parse -q --verify "refs/tags/v$VER" >/dev/null; then echo "Верси
 # Номер версии: versionName — для людей, versionCode — счётчик, по которому Android сравнивает сборки
 CODE=$(( $(sed -n 's/.*versionCode \([0-9]*\).*/\1/p' app/build.gradle) + 1 ))
 sed -i -E "s/versionCode [0-9]+/versionCode $CODE/; s/versionName '[^']*'/versionName '$VER'/" app/build.gradle
+# Номер версии для сайта и его кэша
+sed -i -E "s/const WEB_VERSION = '[^']*';/const WEB_VERSION = '$VER';/" app/src/main/assets/www/js/version.js
+sed -i -E "s/const VERSION = '[^']*';/const VERSION = '$VER';/" app/src/main/assets/www/sw.js
 
 VER="$VER" NOTES="$NOTES" node -e '
   const fs = require("fs"), f = "CHANGELOG.md", head = "# История версий\n\n";

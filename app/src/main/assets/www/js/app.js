@@ -342,7 +342,7 @@ function viewRecipe(id, fit) {
     <p class="small" style="margin-top:12px">Нужно продуктов ≈ <b>${weight >= 1000 ? num(weight / 1000) + ' кг' : weight + ' г'}</b> · на все порции <b>${Math.round(n[0] * p)} ккал</b></p></div>${loadNote}`;
   return `<div class="top"><button class="icon-btn" data-act="back">‹</button>
       <button class="icon-btn fav ${st.fav[id] ? 'on' : ''}" data-act="fav" data-id="${id}">⭐</button></div>
-    ${ph ? `<div class="photo"><img src="img/${id}.jpg" alt=""><a href="${esc(ph.u)}">Фото: ${esc(ph.a)} · ${esc(ph.l)}</a></div>` : ''}
+    ${ph ? `<div class="photo"><img src="img/${id}.jpg" alt=""><a href="${esc(ph.u)}" target="_blank" rel="noopener">Фото: ${esc(ph.a)} · ${esc(ph.l)}</a></div>` : ''}
     <div class="hero">${ph ? '' : tile(r)}<div><h1>${r.name}</h1>
       <p class="muted small">${CATS[r.cat]} · подготовка ${dur(r.prep)} · готовка ${dur(r.cook)}</p></div></div>
     ${m ? `<div class="note tip">🎯 Количество продуктов подстроено под вашу цель по КБЖУ. <a data-act="unfit" style="color:var(--accent);font-weight:600">Показать исходный рецепт</a></div>` : ''}
@@ -599,7 +599,7 @@ function viewGuide() {
     <h2>Фотографии</h2>
     <div class="card"><p class="small">Фото блюд взяты с Wikimedia Commons по свободным лицензиям и служат иллюстрацией: ваше блюдо может выглядеть иначе. Снимки обрезаны и уменьшены.</p>
       <details style="margin-top:8px"><summary class="small muted">Авторы и лицензии (${Object.keys(PHOTOS).length})</summary>
-      ${RECIPES.filter(r => PHOTOS[r.id]).map(r => `<p class="small" style="margin-top:6px">${r.name} — <a href="${esc(PHOTOS[r.id].u)}" style="color:var(--accent)">${esc(PHOTOS[r.id].a)}, ${esc(PHOTOS[r.id].l)}</a></p>`).join('')}</details></div>
+      ${RECIPES.filter(r => PHOTOS[r.id]).map(r => `<p class="small" style="margin-top:6px">${r.name} — <a href="${esc(PHOTOS[r.id].u)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(PHOTOS[r.id].a)}, ${esc(PHOTOS[r.id].l)}</a></p>`).join('')}</details></div>
     <p class="muted small">КБЖУ рассчитаны по сырому весу продуктов и являются приблизительными.</p>`;
 }
 
@@ -610,6 +610,9 @@ const REPO = 'DedMazay321/AeroGrill';
 let VERSION = null, SHELL = 0; // в браузере версии нет — её сообщает Android-оболочка
 try { VERSION = window.AndroidBridge.getVersion(); } catch (e) { /* открыто в браузере */ }
 try { SHELL = window.AndroidBridge.getShell(); } catch (e) { /* оболочка до версии 1.4 */ }
+// Сайт в браузере: обновляется сам при каждом открытии, проверять релизы не нужно
+const WEB = !window.AndroidBridge;
+if (WEB && typeof WEB_VERSION !== 'undefined') VERSION = WEB_VERSION;
 const up = { state: 'idle', list: [], pct: 0, msg: '' };
 function verCmp(a, b) {
   const x = a.split('.'), y = b.split('.');
@@ -621,6 +624,7 @@ const latest = () => up.list.find(r => r.url || r.web);
 const canWeb = r => !!(r && r.web && SHELL && r.shell <= SHELL);
 const ruDate = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
 async function checkUpdate() {
+  if (WEB) return;
   if (up.state === 'checking' || up.state === 'downloading' || up.state === 'ready') return;
   up.state = 'checking';
   drawUpdate();
@@ -667,6 +671,12 @@ window.onUpdateError = msg => { up.state = 'error'; up.msg = 'Не удалос�
 window.onWebReady = v => { up.state = 'ready'; up.readyV = v; drawUpdate(); toast('Версия ' + v + ' загружена и включится при следующем запуске'); };
 const notesHtml = t => esc(t).replace(/\r?\n/g, '<br>');
 function updateInner() {
+  if (WEB) return `<b>Версия ${esc(VERSION || '')}</b><div class="muted small">Сайт обновляется сам при каждом открытии</div>
+    <p class="small" style="margin-top:10px"><b>Как поставить на телефон или компьютер</b><br>
+    iPhone: откройте сайт в Safari → кнопка «Поделиться» → «На экран „Домой“».<br>
+    Android: меню Chrome → «Добавить на главный экран» (или установите приложение APK).<br>
+    Компьютер: значок установки справа в адресной строке Chrome или Edge.</p>
+    <p class="small muted" style="margin-top:8px">Избранное, отметки и список покупок хранятся в этом браузере на этом устройстве.</p>`;
   const last = latest(), s = up.state, web = canWeb(last);
   const body = s === 'checking' ? '<p class="muted small" style="margin-top:10px">Проверяю обновления…</p>'
     : s === 'available' ? `<div class="note tip" style="margin:12px 0"><b>Доступна версия ${esc(last.v)}</b> от ${ruDate(last.date)}<br>${notesHtml(last.notes)}</div>
@@ -688,7 +698,7 @@ function drawUpdate() {
   if (el) el.innerHTML = updateInner();
   if (b) b.innerHTML = updateBanner();
 }
-const updateBanner = () => up.state === 'ready' ? `<a class="note ok" style="display:block" data-act="upd-apply">✅ Версия ${esc(up.readyV)} загружена — нажмите, чтобы включить</a>`
+const updateBanner = () => WEB ? '' : up.state === 'ready' ? `<a class="note ok" style="display:block" data-act="upd-apply">✅ Версия ${esc(up.readyV)} загружена — нажмите, чтобы включить</a>`
   : hasUpdate() && up.state !== 'downloading' ? `<a class="note tip" style="display:block" href="#/guide">🆕 Доступна версия ${esc(st.updNew)} — нажмите, чтобы обновить</a>` : '';
 
 /* ---------- Таймеры ---------- */
@@ -715,9 +725,28 @@ function addMinute(id) {
   bridge('startTimer', id, Math.ceil((t.end - Date.now()) / 1000), t.label);
   tick();
 }
+let audioCtx;
+function audio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* звук недоступен */ }
+  return audioCtx;
+}
+// Пока идёт таймер или открыт режим готовки, экран не гаснет (в приложениях это делает оболочка)
+let wakeLock = null, wakePending = false;
+function keepAwake() {
+  if (!WEB || !navigator.wakeLock) return;
+  const want = st.timers.length > 0 || document.body.classList.contains('cooking');
+  if (want && !wakeLock && !wakePending && document.visibilityState === 'visible') {
+    wakePending = true;
+    navigator.wakeLock.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => { wakeLock = null; }); })
+      .catch(() => { /* не разрешено */ }).then(() => { wakePending = false; });
+  } else if (!want && wakeLock) { wakeLock.release(); wakeLock = null; }
+}
 function beep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audio();
     [0, 0.35, 0.7, 1.4, 1.75, 2.1].forEach(t => {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
@@ -751,6 +780,7 @@ function tick() {
     $('#view').style.paddingBottom = list.length ? `calc(var(--nav-h) + ${40 + list.length * 64}px + env(safe-area-inset-bottom))` : '';
   }
   list.forEach(t => { bar.querySelector(`[data-t="${t.id}"]`).textContent = clock(t.end - now); });
+  keepAwake();
 }
 setInterval(tick, 500);
 
@@ -762,6 +792,7 @@ function render(keepScroll) {
   const [, page, id, ...rest] = location.hash.split('/');
   const cook = page === 'r' && rest.includes('cook'), mode = rest.includes('fit') ? 'fit' : '';
   document.body.classList.toggle('cooking', cook);
+  document.body.classList.toggle('catalog', page !== 'r' && (!page || page === ''));
   const tab = page === 'kbju' || page === 'shop' || page === 'guide' || page === 'pantry' ? page : 'recipes';
   const y = window.scrollY;
   $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : tab === 'pantry' ? viewPantry() : viewRecipes();
@@ -848,6 +879,7 @@ const ACTIONS = {
   'upd-auto': () => { st.autoUpd = !st.autoUpd; save(); drawUpdate(); return false; }
 };
 document.addEventListener('click', e => {
+  if (!audioCtx) audio();
   const el = e.target.closest('[data-act]');
   if (!el) return;
   e.preventDefault();
@@ -872,6 +904,9 @@ document.addEventListener('input', e => {
 
 render(false);
 tick();
+// Сайт: работа без интернета и просьба не удалять данные при нехватке места
+if (WEB && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (WEB && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 // Оболочка ждёт этот сигнал: скачанный комплект страниц, который так и не запустился, она удалит
 bridge('webOk');
 if (VERSION && st.seenVersion && st.seenVersion !== VERSION) toast('Приложение обновлено до версии ' + VERSION);
