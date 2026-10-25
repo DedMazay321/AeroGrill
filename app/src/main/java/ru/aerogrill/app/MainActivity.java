@@ -1,5 +1,6 @@
 package ru.aerogrill.app;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlarmManager;
@@ -13,6 +14,10 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
@@ -30,6 +35,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -43,7 +50,7 @@ public class MainActivity extends Activity {
      * Номер версии оболочки. Комплект страниц из релиза подходит, если ему нужна оболочка не новее этой.
      * tools/release.sh сам увеличивает число, когда меняется Java-код, манифест или ресурсы.
      */
-    static final int SHELL = 2;
+    static final int SHELL = 3;
     /** Обновления принимаются только из релизов этого репозитория. */
     private static final String RELEASES = "https://github.com/DedMazay321/AeroGrill/releases/download/";
     private static final String ASSETS_URL = "file:///android_asset/www/index.html";
@@ -56,6 +63,12 @@ public class MainActivity extends Activity {
     /** Версия страниц, которые сейчас показаны: из APK или из скачанного комплекта. */
     private volatile String activeVersion = "";
     private boolean clearHistory;
+    // Режим готовки без рук: распознавание команд и чтение шагов вслух
+    private SpeechRecognizer recognizer;
+    private boolean voiceOn;
+    private TextToSpeech tts;
+    private boolean ttsReady;
+    private String pendingSpeech;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -109,6 +122,8 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        endVoice(null); // микрофон не остаётся включённым, когда приложение свёрнуто
+        if (tts != null) tts.stop();
         foreground = false;
         super.onPause();
     }
@@ -290,6 +305,104 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        endVoice(null);
+        if (tts != null) tts.shutdown();
+        super.onDestroy();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        if (code != 2) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) beginVoice();
+        else endVoice("Без доступа к микрофону голосовое управление не работает");
+    }
+
+    /* ---------- Голос и чтение вслух ---------- */
+
+    private void beginVoice() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 2);
+            return;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            endVoice("На телефоне нет службы распознавания речи");
+            return;
+        }
+        voiceOn = true;
+        if (recognizer == null) {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onResults(Bundle b) {
+                    ArrayList<String> r = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (r != null && !r.isEmpty()) js("onVoice", JSONObject.quote(r.get(0)));
+                    relisten();
+                }
+                @Override public void onError(int error) {
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) endVoice("Нет доступа к микрофону");
+                    else relisten(); // тишина или неразборчивая фраза — просто слушаем дальше
+                }
+                @Override public void onReadyForSpeech(Bundle b) { }
+                @Override public void onBeginningOfSpeech() { }
+                @Override public void onRmsChanged(float v) { }
+                @Override public void onBufferReceived(byte[] bytes) { }
+                @Override public void onEndOfSpeech() { }
+                @Override public void onPartialResults(Bundle b) { }
+                @Override public void onEvent(int type, Bundle b) { }
+            });
+        }
+        listen();
+        js("onVoiceState", "true");
+    }
+
+    private void listen() {
+        if (!voiceOn || recognizer == null) return;
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        try {
+            recognizer.startListening(i);
+        } catch (Exception e) {
+            endVoice("Не удалось включить микрофон");
+        }
+    }
+
+    private void relisten() {
+        if (voiceOn) web.postDelayed(this::listen, 250);
+    }
+
+    private void endVoice(String message) {
+        boolean was = voiceOn;
+        voiceOn = false;
+        if (recognizer != null) {
+            recognizer.destroy();
+            recognizer = null;
+        }
+        if (was || message != null) js("onVoiceState", "false" + (message != null ? ", " + JSONObject.quote(message) : ""));
+    }
+
+    private void say(String text) {
+        if (tts == null) {
+            pendingSpeech = text;
+            tts = new TextToSpeech(this, status -> {
+                if (status != TextToSpeech.SUCCESS) return;
+                tts.setLanguage(new Locale("ru", "RU"));
+                ttsReady = true;
+                if (pendingSpeech != null) say(pendingSpeech);
+                pendingSpeech = null;
+            });
+            return;
+        }
+        if (!ttsReady) {
+            pendingSpeech = text;
+            return;
+        }
+        if (text == null || text.isEmpty()) tts.stop();
+        else tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "step");
+    }
+
     /* ---------- Таймеры ---------- */
 
     /** У каждого таймера свой номер: он отличает будильники и уведомления друг от друга. */
@@ -323,6 +436,21 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void cancelTimer(int id) {
             runOnUiThread(() -> ((AlarmManager) getSystemService(Context.ALARM_SERVICE)).cancel(alarmIntent(id, "")));
+        }
+
+        @JavascriptInterface
+        public void startVoice() {
+            runOnUiThread(MainActivity.this::beginVoice);
+        }
+
+        @JavascriptInterface
+        public void stopVoice() {
+            runOnUiThread(() -> endVoice(null));
+        }
+
+        @JavascriptInterface
+        public void speak(String text) {
+            runOnUiThread(() -> say(text));
         }
 
         @JavascriptInterface

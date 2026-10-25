@@ -7,7 +7,7 @@ const st = Object.assign({
   target: null, meals: 4, excl: {}, persons: 1, kmode: 'day', calcOpen: false,
   dishT: { k: 550, p: 40, f: 18, c: 50 }, dishType: 'm', dishRes: null, menu: null,
   adapt: {}, steps: {}, shop: { items: {}, extras: [], done: {} }, timer: null, sort: 'def', autoUpd: true,
-  cooked: {}, port: {}, week: null, weekOpen: 0, pantry: {}, ptab: 'have'
+  cooked: {}, port: {}, notes: {}, mytime: {}, tw: { time: 40, kind: 'm', home: '0', seed: 0 }, ttsAuto: false, week: null, weekOpen: 0, pantry: {}, ptab: 'have'
 }, load());
 
 // Данные хранятся в двух местах: в хранилище страницы и в Android-оболочке. После обновления страницы
@@ -291,7 +291,7 @@ function recipeMatches(r) {
 }
 function recipeCard(r) {
   return `<a class="rcard" href="#/r/${r.id}">${tile(r)}<div class="grow"><h3>${r.name}</h3>
-    <div class="meta">${r.cuisine ? `<span>🌍 ${r.cuisine}</span>` : ''}<span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${ck(r.id).rate ? `<span class="rate">★ ${ck(r.id).rate}</span>` : ''}${ck(r.id).n ? `<span>✓ готовил${ck(r.id).n > 1 ? ' ×' + ck(r.id).n : ''}</span>` : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
+    <div class="meta">${r.cuisine ? `<span>🌍 ${r.cuisine}</span>` : ''}<span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${ck(r.id).rate ? `<span class="rate">★ ${ck(r.id).rate}</span>` : ''}${ck(r.id).n ? `<span>✓ готовил${ck(r.id).n > 1 ? ' ×' + ck(r.id).n : ''}</span>` : ''}${st.notes[r.id] ? '<span>📝</span>' : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
     <div class="kb">${kbLine(perServing(r))}</div></div>
     <button class="fav ${st.fav[r.id] ? 'on' : ''}" data-act="fav" data-id="${r.id}">⭐</button></a>`;
 }
@@ -323,9 +323,39 @@ function featureHtml() {
     <p>⏱ ${dur(r.prep + r.cook)} · программа «${r.prog}» · ${r.temp} °C${r.steam ? ' · 💨 с паром' : ''} · ${Math.round(n[0])} ккал на порцию</p>
     <div class="row" style="margin-top:18px"><a class="btn sm" href="#/r/${r.id}">Открыть рецепт</a><button class="btn sm ghost glass" data-act="feature-next">Другой рецепт ›</button></div></div></section>`;
 }
+const SWEET = ['sugar', 'honey', 'chocolate', 'cocoa', 'banana', 'apple', 'pear', 'pineapple', 'strawberry', 'cherry', 'raisins', 'orange'];
+// Сравнимое случайное число для перемешивания вариантов: одинаковое при перерисовке, новое по кнопке «Другие»
+const hashSeed = (txt, seed) => { let h = seed * 2654435761 >>> 0; for (const c of txt) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h; };
+function todayPicks() {
+  const w = st.tw, sweet = r => r.ing.some(i => SWEET.includes(i[0])) && ['dessert', 'breakfast', 'dry'].includes(r.cat);
+  const fits = r => {
+    if (w.time && r.prep + r.cook > w.time) return false;
+    if (w.kind === 'm') return r.meal.includes('m');
+    if (w.kind === 'pp') return (r.meal.includes('m') || r.meal.includes('b')) && perServing(r)[0] <= 400 && perServing(r)[1] >= 20;
+    if (w.kind === 'b') return r.meal.includes('b');
+    return sweet(r);
+  };
+  const missing = r => [...new Set(r.ing.map(i => i[0]))].filter(id => !st.pantry[id]).length;
+  let list = RECIPES.filter(r => allowed(r) && fits(r)).map(r => ({ r, miss: w.home === '1' ? missing(r) : 0, h: hashSeed(r.id, w.seed) }));
+  if (w.home === '1') list = list.filter(x => x.miss <= 2);
+  return list.sort((a, b) => a.miss - b.miss || a.h - b.h).slice(0, 3);
+}
+function viewToday() {
+  const w = st.tw, picks = todayPicks(), hasHome = Object.keys(st.pantry).some(k => st.pantry[k]);
+  return `<div class="top"><button class="icon-btn" data-act="back">‹</button></div>
+    <h1>Что приготовить сегодня?</h1><p class="muted small" style="margin:4px 0 14px">Три вопроса — и три готовых варианта</p>
+    <div class="card">
+      <p class="q">1. Сколько есть времени?</p>${seg('tw-time', w.time, [[20, '20 мин'], [40, '40 мин'], [90, '1,5 ч'], [0, 'Не важно']])}
+      <p class="q">2. Чего хочется?</p>${seg('tw-kind', w.kind, [['m', 'Сытное'], ['pp', 'ПП'], ['b', 'Завтрак'], ['sweet', 'Сладкое']])}
+      <p class="q">3. Готовить из того, что дома?</p>${seg('tw-home', w.home, [['0', 'Не важно'], ['1', 'Да']])}
+      ${w.home === '1' && !hasHome ? '<p class="small muted" style="margin-top:8px">Сначала отметьте продукты во вкладке <a href="#/pantry" style="color:var(--accent)">«Дома»</a>.</p>' : ''}</div>
+    ${picks.length ? `<h2>Попробуйте</h2><div id="list" class="picks">${picks.map(x => recipeCard(x.r) + (x.miss ? `<p class="small muted pick-miss">Не хватает продуктов: ${x.miss}</p>` : '')).join('')}</div>
+      <button class="btn ghost" data-act="tw-more">🎲 Другие варианты</button>`
+      : '<div class="empty">Ничего не подошло. Увеличьте время или выберите «Не важно» в третьем вопросе.</div>'}`;
+}
 function viewRecipes() {
   const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал'], ['world', '🌍 Кухни мира'], ['fest', '🎉 Праздничное'], ['cooked', '✓ Готовил'], ['fresh', '🆕 Не пробовал']];
-  return `<div id="updb">${updateBanner()}</div>${featureHtml()}<h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
+  return `<div id="updb">${updateBanner()}</div>${featureHtml()}<a class="today-card" href="#/today"><span class="today-ico">🍳</span><span class="grow"><b>Что приготовить сегодня?</b><br><span class="small muted">Три вопроса — и готовые варианты</span></span><span class="muted">›</span></a><h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
     <div class="search-wrap"><input class="search" type="search" placeholder="Блюдо, продукт или программа" value="${esc(st.q)}" data-search></div>
     <div class="chips"><button class="chip ${st.cat === 'all' ? 'on' : ''}" data-act="cat" data-v="all">Все</button>
       ${Object.keys(CATS).map(c => `<button class="chip ${st.cat === c ? 'on' : ''}" data-act="cat" data-v="${c}">${CATS[c]}</button>`).join('')}</div>
@@ -364,7 +394,7 @@ function viewRecipe(id, fit) {
     <div class="card"><div class="panel">
       <div class="cell"><small>Программа</small><b>${r.prog}</b></div>
       <div class="cell"><small>Температура</small><b>${r.temp} °C</b></div>
-      <div class="cell"><small>Время в аэрогриле</small><b>${dur(r.cook)}</b></div>
+      <div class="cell"><small>Время в аэрогриле${myCook(r) !== r.cook ? ' · ваше' : ''}</small><b>${dur(myCook(r))}</b></div>
       <div class="cell"><small>Функция «Пар»</small><b class="${r.steam ? 'steam-c' : ''}">${r.steam ? '💨 включить' : 'не нужна'}</b></div></div></div>
     ${portionsCard}
     <h2>КБЖУ на 1 порцию</h2>${nutriCells(n)}
@@ -381,11 +411,12 @@ function viewRecipe(id, fit) {
     <p class="muted small" style="margin-bottom:8px">Или нажимайте на шаг в списке, когда выполнили его, — отметки сохраняются.</p>
     <div class="card">${r.steps.map((s, i) => `<div class="step ${s.set ? 'cook' : ''} ${done[i] ? 'done' : ''}" data-act="step" data-v="${i}">
       <div class="num">${done[i] ? '✓' : i + 1}</div>
-      <div class="grow"><p>${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1)) : ''}</div></div>`).join('')}</div>
+      <div class="grow"><p>${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1), r.id, i) : ''}</div></div>`).join('')}</div>
     ${nDone === total ? '<div class="note ok">✅ Все шаги выполнены. Приятного аппетита!</div>' : ''}
     ${r.tip ? `<div class="note tip">💡 ${r.tip}</div>` : ''}
-    <h2>Моя оценка</h2>
-    <div class="card"><div class="stars">${[1, 2, 3, 4, 5].map(v => `<button class="${v <= c.rate ? 'on' : ''}" data-act="rate" data-v="${v}">★</button>`).join('')}</div>
+    <h2>Мои заметки и оценка</h2>
+    <div class="card"><textarea class="note-box" data-note placeholder="Например: у меня готово за 18 минут, соли меньше">${esc(st.notes[id] || '')}</textarea>
+      <div class="stars" style="margin-top:12px">${[1, 2, 3, 4, 5].map(v => `<button class="${v <= c.rate ? 'on' : ''}" data-act="rate" data-v="${v}">★</button>`).join('')}</div>
       <p class="small muted" style="margin:6px 0 12px">${c.n ? 'Готовили ' + c.n + ' ' + (c.n % 10 === 1 && c.n !== 11 ? 'раз' : c.n % 10 >= 2 && c.n % 10 <= 4 && (c.n < 10 || c.n > 20) ? 'раза' : 'раз') + ', последний — ' + new Date(c.last).toLocaleDateString('ru-RU') : 'Вы ещё не готовили это блюдо'}${c.rate && c.rate <= 2 ? '. С такой оценкой блюдо не попадёт в меню.' : ''}</p>
       <button class="btn ghost" data-act="cooked">✓ Отметить, что приготовил</button>
       ${c.n ? '<button class="btn sm ghost" style="margin-top:8px;width:100%" data-act="uncooked">Убрать одну отметку</button>' : ''}</div>
@@ -403,24 +434,34 @@ function viewCook(id, fit) {
     ? `<h1 style="margin:18px 0 6px">Подготовьте продукты</h1><p class="muted" style="margin-bottom:12px">На ${rv.portions} ${rv.portions === 1 ? 'порцию' : rv.portions < 5 ? 'порции' : 'порций'}</p>
       <div class="card">${amounts(r, rv.portions, m).map(a => `<div class="ing"><span>${ING[a.id].n}</span><span>${amountText(a)}</span></div>`).join('')}
       ${extras(r, rv.portions).map(e => `<div class="ing"><span>${e[0]}</span><span>${e[1] || ''}</span></div>`).join('')}</div>`
-    : `<p class="cook-text">${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1)) : ''}`;
+    : `<p class="cook-text">${s.t}</p>${s.set ? setBox(s.set, r.name + ' — шаг ' + (i + 1), r.id, i) : ''}`;
   return `<div class="row between"><button class="icon-btn" data-act="cook-exit">✕</button>
-      <span class="badge">${i < 0 ? 'Продукты' : 'Шаг ' + (i + 1) + ' из ' + total}</span></div>
+      <span class="row">${canSpeak() ? `<button class="icon-btn ${st.ttsAuto ? 'on-btn' : ''}" data-act="tts" title="Читать шаги вслух">🔊</button>` : ''}
+      ${canListen() ? `<button class="icon-btn ${voice.on ? 'on-btn' : ''}" data-act="voice" title="Управление голосом">🎙</button>` : ''}
+      <span class="badge">${i < 0 ? 'Продукты' : 'Шаг ' + (i + 1) + ' из ' + total}</span></span></div>
+    ${voice.on ? '<p class="small voice-hint">🎙 Слушаю: «дальше», «назад», «таймер», «повтори», «стоп»</p>' : ''}
     <p class="muted small" style="margin:10px 0 6px">${r.name}</p>
     <div class="track"><i style="width:${(i + 1) / total * 100}%"></i></div>
     ${body}
+    <p class="small muted swipe-hint">Листайте шаги свайпом влево и вправо</p>
     <div class="cook-nav"><button class="btn ghost" data-act="cook-prev" ${i < 0 ? 'disabled' : ''}>‹ Назад</button>
       <button class="btn" data-act="cook-next">${i === total - 1 ? '✓ Готово' : i < 0 ? 'Начать ›' : 'Сделано, дальше ›'}</button></div>`;
 }
-function setBox(s, name) {
+// Своё время для шага: если аэрогриль готовит быстрее или медленнее, поправка запоминается для рецепта
+const myMin = (rid, i, s) => { const t = (st.mytime[rid] || {})[i]; return t == null ? s.min : t; };
+const myCook = r => r.steps.reduce((a, s, i) => a + (s.set ? myMin(r.id, i, s.set) : 0), 0);
+function setBox(s, name, rid, i) {
+  const mm = rid ? myMin(rid, i, s) : s.min, own = mm !== s.min;
   return `<div class="set"><div class="panel">
       <div class="cell"><small>Программа</small><b>${s.prog}</b></div>
       <div class="cell"><small>Температура</small><b>${s.temp} °C</b></div>
-      <div class="cell"><small>Время</small><b>${dur(s.min)}</b></div>
+      <div class="cell"><small>Время${own ? ' · ваше' : ''}</small><div class="row between"><b>${dur(mm)}</b>
+        ${rid ? `<span class="adj"><button data-act="mytime" data-id="${rid}" data-i="${i}" data-v="-1" title="Меньше">−</button><button data-act="mytime" data-id="${rid}" data-i="${i}" data-v="1" title="Больше">+</button></span>` : ''}</div>
+        ${own ? `<small>в рецепте ${dur(s.min)} · <a data-act="mytime-reset" data-id="${rid}" data-i="${i}" style="color:var(--accent)">сбросить</a></small>` : ''}</div>
       <div class="cell"><small>Пар</small><b class="${s.steam ? 'steam-c' : ''}">${s.steam ? '💨 включён' : 'выключен'}</b></div>
       <div class="cell wide"><small>Куда класть</small><b style="white-space:normal;font-size:14px">${s.place}</b></div>
       ${s.fan ? `<div class="cell wide"><small>Обдув</small><b style="white-space:normal;font-size:14px">${s.fan}</b></div>` : ''}</div>
-    <button class="btn sm" data-act="timer" data-v="${s.min}" data-label="${esc(name)}">⏱ Запустить таймер на ${dur(s.min)}</button></div>`;
+    <button class="btn sm" data-act="timer" data-v="${mm}" data-label="${esc(name)}">⏱ Запустить таймер на ${dur(mm)}</button></div>`;
 }
 
 /* ---------- Экран: КБЖУ ---------- */
@@ -464,6 +505,44 @@ function kbjuDay() {
 const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 const personsCard = () => `<div class="card"><div class="row between"><span>Готовим на человек</span>
   <div class="stepper"><button data-act="persons" data-v="-1">−</button><b>${st.persons}</b><button data-act="persons" data-v="1">+</button></div></div></div>`;
+const DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const slotGroup = k => k === 'b' ? 'b' : k === 'n' ? 'n' : 'm';
+function retotal(day) {
+  day.total = [0, 0, 0, 0];
+  day.slots.forEach(sl => sl.items.forEach(it => it.n.forEach((v, j) => { day.total[j] += v; })));
+  day.err = errOf(day.total, tArr(st.target));
+}
+// Календарь на компьютере: приёмы пищи можно перетаскивать между днями (завтрак — на завтрак, обед и ужин — между собой)
+function weekGrid(w, T) {
+  return `<div class="weekgrid">${w.days.map((d, di) => {
+    const dev = Math.round((d.total[0] - T[0]) / T[0] * 100);
+    return `<div class="wday"><div class="wday-h"><b>${DAY_SHORT[di]}</b><span class="badge ${Math.abs(dev) > 8 ? 'warn' : 'ok'}">${Math.round(d.total[0])} ккал</span></div>
+      ${d.slots.map((sl, i) => `<div class="wslot" draggable="true" data-d="${di}" data-s="${i}" data-g="${slotGroup(sl.key)}">
+        <small>${SLOT[sl.key]}</small>${sl.items.map(it => { const r = byId(it.id); return `<a data-act="open-fit" data-id="${r.id}" data-m='${JSON.stringify(it.m)}' class="wdish">${tile(r)}<span>${r.name}</span></a>`; }).join('')}</div>`).join('')}
+      <button class="btn sm ghost" data-act="week-day" data-v="${di}">🎲 Другой день</button></div>`;
+  }).join('')}</div><p class="small muted" style="margin-top:8px">Перетаскивайте приёмы пищи между днями мышью: завтрак — на завтрак, обед и ужин — между собой.</p>`;
+}
+let dragFrom = null;
+document.addEventListener('dragstart', e => { const el = e.target.closest && e.target.closest('.wslot'); if (!el) return; dragFrom = el.dataset; e.dataTransfer.setData('text/plain', ''); el.classList.add('dragging'); });
+document.addEventListener('dragend', () => { document.querySelectorAll('.wslot').forEach(el => el.classList.remove('dragging', 'drop-ok')); });
+document.addEventListener('dragover', e => {
+  const el = e.target.closest && e.target.closest('.wslot');
+  if (!el || !dragFrom || el.dataset.g !== dragFrom.g) return;
+  e.preventDefault();
+  el.classList.add('drop-ok');
+});
+document.addEventListener('dragleave', e => { const el = e.target.closest && e.target.closest('.wslot'); if (el) el.classList.remove('drop-ok'); });
+document.addEventListener('drop', e => {
+  const el = e.target.closest && e.target.closest('.wslot');
+  if (!el || !dragFrom || el.dataset.g !== dragFrom.g) return;
+  e.preventDefault();
+  const a = st.week.days[+dragFrom.d], b = st.week.days[+el.dataset.d], i = +dragFrom.s, j = +el.dataset.s;
+  const tmp = a.slots[i].items; a.slots[i].items = b.slots[j].items; b.slots[j].items = tmp;
+  retotal(a); retotal(b);
+  dragFrom = null;
+  save();
+  render(true);
+});
 function kbjuWeek() {
   const w = st.week, T = tArr(st.target);
   let res = '';
@@ -473,13 +552,14 @@ function kbjuWeek() {
     const repeats = all.length - new Set(all).size;
     res = `<h2>В среднем за день</h2><div class="card">${bars(avg, T)}
         <p class="small muted">Блюд на неделю: ${all.length}${repeats ? ', из них повторяются ' + repeats + ' — подходящих блюд не хватило' : ', без повторов'}.</p></div>
+      <div class="desk-only">${weekGrid(w, T)}</div><div class="mob-only">
       ${w.days.map((d, di) => {
         const open = st.weekOpen === di;
         return `<div class="card"><button class="dayhead" data-act="week-open" data-v="${di}"><span class="grow"><b>${DAYS[di]}</b><br><span class="kb">${kbLine(d.total)}</span></span><span class="muted">${open ? '▾' : '▸'}</span></button>
           ${open ? d.slots.map((sl, i) => `<div class="slot-h"><h3>${SLOT[sl.key]}</h3><button class="btn sm ghost" data-act="week-swap" data-d="${di}" data-v="${i}">🔄 Заменить</button></div>${sl.items.map(miniDish).join('')}`).join('')
             + `<button class="btn sm ghost" style="margin-top:12px;width:100%" data-act="week-day" data-v="${di}">🎲 Пересобрать весь день</button>`
             : `<p class="small muted" style="margin-top:6px">${d.slots.map(sl => sl.items.map(x => byId(x.id).name).join(' + ')).join(' · ')}</p>`}</div>`;
-      }).join('')}
+      }).join('')}</div>
       ${personsCard()}<button class="btn" data-act="shop-week">🛒 Продукты на неделю — в список покупок</button>`;
   }
   return `<div class="card"><div class="small muted" style="margin-bottom:6px">Приёмов пищи в день</div>
@@ -813,16 +893,78 @@ setInterval(tick, 500);
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2200); }
 
+/* ---------- Голос и чтение вслух в режиме готовки ---------- */
+const NATIVE_VOICE = !!(window.AndroidBridge && window.AndroidBridge.startVoice);
+const WebRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const canListen = () => NATIVE_VOICE || (WEB && !!WebRec);
+const canSpeak = () => !!(window.AndroidBridge && window.AndroidBridge.speak) || (WEB && 'speechSynthesis' in window);
+const voice = { on: false, rec: null };
+function speak(text) {
+  const t = String(text).replace(/<[^>]+>/g, '');
+  if (window.AndroidBridge && window.AndroidBridge.speak) return bridge('speak', t);
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(t);
+    u.lang = 'ru-RU';
+    speechSynthesis.speak(u);
+  } catch (e) { /* озвучка недоступна */ }
+}
+function speakStep() {
+  const r = byId(rv.cookId);
+  if (!r) return;
+  if (rv.cook < 0) speak('Подготовьте продукты: ' + amounts(r, rv.portions, rv.fit ? st.adapt[r.id] : null).map(a => ING[a.id].n).join(', '));
+  else speak('Шаг ' + (rv.cook + 1) + '. ' + r.steps[rv.cook].t);
+}
+function runAct(name, v, el) { if (ACTIONS[name](v, el) !== false) { save(); render(true); } }
+// Голосовые команды: распознанная фраза → действие в режиме готовки
+window.onVoice = text => {
+  const t = String(text).toLowerCase();
+  if (/дальше|далее|следующ|вперёд|вперед|готово|сделано/.test(t)) runAct('cook-next');
+  else if (/назад|предыдущ|верни/.test(t)) runAct('cook-prev');
+  else if (/таймер|засеки|засечь/.test(t)) { const b = $('[data-act=timer]'); if (b) runAct('timer', b.dataset.v, b); else toast('В этом шаге нет таймера'); }
+  else if (/повтор|прочитай|читай|ещё раз|еще раз/.test(t)) speakStep();
+  else if (/стоп|хватит|выключи/.test(t)) { voiceStop(); render(true); }
+};
+window.onVoiceState = (on, msg) => { voice.on = !!on; if (msg) toast(msg); if (document.body.classList.contains('cooking')) render(true); };
+function voiceStart() {
+  voice.on = true;
+  if (NATIVE_VOICE) return bridge('startVoice');
+  try {
+    const rec = voice.rec = new WebRec();
+    rec.lang = 'ru-RU'; rec.continuous = true; rec.interimResults = false;
+    rec.onresult = e => window.onVoice(e.results[e.results.length - 1][0].transcript);
+    rec.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'network') { voice.on = false; toast('Голосовое управление недоступно в этом браузере'); render(true); } };
+    rec.onend = () => { if (voice.on) try { rec.start(); } catch (e) { /* уже запущено */ } };
+    rec.start();
+  } catch (e) { voice.on = false; toast('Голосовое управление недоступно'); }
+}
+function voiceStop() {
+  voice.on = false;
+  if (NATIVE_VOICE) bridge('stopVoice');
+  else if (voice.rec) try { voice.rec.stop(); } catch (e) { /* уже остановлено */ }
+}
+// Свайп влево — следующий шаг, вправо — предыдущий
+let touch0 = null;
+document.addEventListener('touchstart', e => { touch0 = document.body.classList.contains('cooking') ? e.touches[0] : null; }, { passive: true });
+document.addEventListener('touchend', e => {
+  if (!touch0) return;
+  const t = e.changedTouches[0], dx = t.clientX - touch0.clientX, dy = t.clientY - touch0.clientY;
+  touch0 = null;
+  if (Math.abs(dx) > 70 && Math.abs(dy) < 60) runAct(dx < 0 ? 'cook-next' : 'cook-prev');
+}, { passive: true });
+
 /* ---------- Маршруты и события ---------- */
 function render(keepScroll) {
   const [, page, id, ...rest] = location.hash.split('/');
   const cook = page === 'r' && rest.includes('cook'), mode = rest.includes('fit') ? 'fit' : '';
   document.body.classList.toggle('cooking', cook);
-  document.body.classList.toggle('catalog', page !== 'r' && (!page || page === ''));
+  document.body.classList.toggle('catalog', page !== 'r' && (!page || page === '' || page === 'today'));
   document.body.classList.toggle('recipe', page === 'r' && !cook);
+  document.body.classList.toggle('kbju-wide', page === 'kbju' && st.kmode === 'week');
   const tab = page === 'kbju' || page === 'shop' || page === 'guide' || page === 'pantry' ? page : 'recipes';
+  if (!cook && voice.on) voiceStop();
   const y = window.scrollY;
-  $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : tab === 'pantry' ? viewPantry() : viewRecipes();
+  $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : tab === 'pantry' ? viewPantry() : page === 'today' ? viewToday() : viewRecipes();
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === (page === 'r' && mode === 'fit' ? 'kbju' : tab)));
   window.scrollTo(0, keepScroll && !cook ? y : 0);
 }
@@ -846,11 +988,11 @@ const ACTIONS = {
     location.hash = '#/r/' + r.id + (rv.fit ? '/fit' : '') + '/cook';
     return false;
   },
-  'cook-prev': () => { rv.cook = Math.max(-1, rv.cook - 1); },
+  'cook-prev': () => { rv.cook = Math.max(-1, rv.cook - 1); if (st.ttsAuto) setTimeout(speakStep, 50); },
   'cook-next': () => {
     const r = byId(rv.cookId);
     if (rv.cook >= 0) (st.steps[r.id] = st.steps[r.id] || {})[rv.cook] = 1;
-    if (rv.cook < r.steps.length - 1) { rv.cook++; return; }
+    if (rv.cook < r.steps.length - 1) { rv.cook++; if (st.ttsAuto) setTimeout(speakStep, 50); return; }
     save();
     markCooked(r.id);
     toast('Готово! Блюдо отмечено как приготовленное — поставьте оценку');
@@ -858,6 +1000,19 @@ const ACTIONS = {
     return false;
   },
   'cook-exit': () => { history.back(); return false; },
+  tts: () => { st.ttsAuto = !st.ttsAuto; if (st.ttsAuto) speakStep(); else speak(''); },
+  voice: () => { if (voice.on) voiceStop(); else voiceStart(); },
+  mytime: (v, el) => {
+    const r = byId(el.dataset.id), i = +el.dataset.i, s = r.steps[i].set, cur = myMin(r.id, i, s), step = s.min >= 90 ? 10 : 1;
+    const t = (st.mytime[r.id] = st.mytime[r.id] || {});
+    t[i] = Math.max(1, cur + step * +v);
+    if (t[i] === s.min) delete t[i];
+  },
+  'mytime-reset': (v, el) => { const t = st.mytime[el.dataset.id]; if (t) delete t[el.dataset.i]; },
+  'tw-time': v => { st.tw.time = +v; },
+  'tw-kind': v => { st.tw.kind = v; },
+  'tw-home': v => { st.tw.home = v; },
+  'tw-more': () => { st.tw.seed++; },
   timer: (v, el) => { if (startTimer(+v, el.dataset.label)) toast('Таймер запущен — не забудьте нажать «Старт» на аэрогриле'); return false; },
   'timer-stop': v => { stopTimer(+v); return false; },
   'timer-add': v => { addMinute(+v); return false; },
@@ -920,6 +1075,8 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && !typing) {
     const box = $('[data-search]') || $('[data-psearch]');
     if (box) { e.preventDefault(); box.focus(); }
+  } else if (!typing && document.body.classList.contains('cooking') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    runAct(e.key === 'ArrowRight' ? 'cook-next' : 'cook-prev');
   } else if (e.key === 'Escape') {
     if (!$('#modal').hidden) { $('#modal').hidden = true; finished = []; }
     else if (typing) document.activeElement.blur();
@@ -935,6 +1092,7 @@ document.addEventListener('change', e => {
   save();
 });
 document.addEventListener('input', e => {
+  if (e.target.matches('[data-note]')) { const v = e.target.value.trim(); if (v) st.notes[rv.id] = e.target.value; else delete st.notes[rv.id]; save(); return; }
   if (e.target.matches('[data-psearch]')) { pq = e.target.value; $('#pchips').innerHTML = pantryChips(); return; }
   if (!e.target.matches('[data-search]')) return;
   st.q = e.target.value;
