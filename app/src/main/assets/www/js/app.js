@@ -934,7 +934,14 @@ render(false);
 tick();
 if ($('#sidever')) $('#sidever').textContent = VERSION ? 'Версия ' + VERSION : '';
 // Сайт: работа без интернета и просьба не удалять данные при нехватке места
-if (WEB && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (WEB && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  // Когда на сайте вышла новая версия, её служебный скрипт активируется — один раз перезагружаем страницу,
+  // чтобы сразу показать новое (при самом первом открытии перезагрузка не нужна)
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+}
 if (WEB && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 // Оболочка ждёт этот сигнал: скачанный комплект страниц, который так и не запустился, она удалит
 bridge('webOk');
