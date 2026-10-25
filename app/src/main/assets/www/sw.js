@@ -1,10 +1,10 @@
 // Работа сайта без интернета. Страницы и скрипты берутся из сети, а если её нет — из кэша;
 // фото кэшируются по мере просмотра. Номер версии обновляет tools/release.sh
-const VERSION = '1.8.1';
+const VERSION = '1.9.0';
 const CACHE = 'aerogrill-' + VERSION;
 const CORE = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
   'js/version.js', 'js/data-ingredients.js', 'js/data-recipes.js', 'js/data-recipes-2.js', 'js/data-recipes-3.js',
-  'js/data-recipes-4.js', 'js/data-photos.js', 'js/app.js'];
+  'js/data-recipes-4.js', 'js/data-recipes-5.js', 'js/data-photos.js', 'js/app.js'];
 
 self.addEventListener('install', e => {
   // reload — мимо кэша браузера, иначе новая версия могла бы сохранить старые файлы

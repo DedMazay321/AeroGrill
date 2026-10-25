@@ -730,5 +730,260 @@ const PHOTOS = {
   "a": "Fumikas Sagisavas",
   "l": "CC0",
   "u": "https://commons.wikimedia.org/wiki/File:Dried_Strawberries.jpg"
+ },
+ "satay": {
+  "a": "Rashmiwalia85",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Chicken_satay_sticks.jpg"
+ },
+ "korean-wings": {
+  "a": "Chloe Tan talk",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:C%C3%A1nh_g%C3%A0_r%C3%A1n_ki%E1%BB%83u_H%C3%A0n_Qu%E1%BB%91c_(2019-09-03).jpg"
+ },
+ "chkmeruli": {
+  "a": "Gigi Griffis from Full-Time Traveler",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Georgian_cuisine_(33309210248).jpg"
+ },
+ "cevapcici": {
+  "a": "Miomir Magdevski",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Pazarski_%C4%87evapi_-_cevapcici_from_Novi_Pazar_(Serbia)_01.jpg"
+ },
+ "shawarma": {
+  "a": "Andy Li",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Handmade_Chicken_Shawarma_Wrap_-_Lavash.jpg"
+ },
+ "focaccia": {
+  "a": "Parkerman & Christie from San Diego, USA",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Rosemary_Focaccia.jpg"
+ },
+ "lavash-lasagna": {
+  "a": "jules / stonesoup",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Lasagne_-_stonesoup.jpg"
+ },
+ "nachos": {
+  "a": "chee.hong from Kuala Lumpur, Malaysia",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Nachos-cheese_(cropped).jpg"
+ },
+ "enchiladas": {
+  "a": "ChefCarlsson",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Enchiladas-rojas.jpg"
+ },
+ "souvlaki": {
+  "a": "PattayaPatrol",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:DFC_4715_Sizzling_skewers_of_grilled_pork_served_with_crispy_fries_and_a_cool_tzatziki_dip_-_comfort_food_done_right.jpg"
+ },
+ "moussaka": {
+  "a": "Key West Wedding Photography",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Moussaka_12.jpg"
+ },
+ "yakitori": {
+  "a": "Francesc Fort",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Yakitori_-_Tora.jpg"
+ },
+ "sweet-sour-pork": {
+  "a": "Walter Grassroot",
+  "l": "CC BY-SA 3.0",
+  "u": "https://commons.wikimedia.org/wiki/File:%E8%8F%A0%E8%90%9D%E5%92%95%E5%99%9C%E8%82%89.jpg"
+ },
+ "tikka-masala": {
+  "a": "Kelly Sue",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Chicken_Tikka_Masala_KellySue.JPG"
+ },
+ "patatas-bravas": {
+  "a": "Juan Emilio Prades Bel",
+  "l": "CC BY 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Patatas_bravas._Tapa_de_bar_(Espa%C3%B1a).jpg"
+ },
+ "med-salad": {
+  "a": "T. Bjornstad",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Chicken_salad_with_eggs.jpg"
+ },
+ "lamb-kebab": {
+  "a": "Allan Grey",
+  "l": "CC BY-SA 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Lamb_Shashlik_on_Bread_Roundal.jpg"
+ },
+ "quiche": {
+  "a": "Arnaud 25",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Quiche_lorraine_04.jpg"
+ },
+ "kentucky": {
+  "a": "Mumujit",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Fried_chicken_drumsticks.jpg"
+ },
+ "peppers-beef-rice": {
+  "a": "Roundhere44",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Stuffed_Peppers_Florentine.jpg"
+ },
+ "pepper-steak": {
+  "a": "David Pursehouse from Kawasaki, Japan",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Pepper_Steak_(2225347845).jpg"
+ },
+ "salmon-veg": {
+  "a": "Gerda Arendt",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Steckenroth,_salmon_on_baked_vegetables.jpg"
+ },
+ "tilapia-capers": {
+  "a": "Andy / Andrew Fogg from near Cambridge, UK",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Tfafp_(27219512805).jpg"
+ },
+ "potato-bacon-cheese": {
+  "a": "Mark James Miller",
+  "l": "CC BY-SA 3.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Twice_baked_potato.JPG"
+ },
+ "mushroom-skewers": {
+  "a": "City Foodsters",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Mushroom_(12402613113).jpg"
+ },
+ "pollock-parcel": {
+  "a": "Blue Lotus. from Tokio",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Orata_al_Cartoccio.jpg"
+ },
+ "beet-feta": {
+  "a": "Daderot",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Beet_salad_-_Boston,_MA.jpg"
+ },
+ "veg-chips": {
+  "a": "Mx. Granger",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Tyrrells_veg_crisps_1.jpg"
+ },
+ "cottage-cocoa-cake": {
+  "a": "Willis Lam",
+  "l": "CC BY-SA 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Chocolate_Cake_Slice_in_bin_(32180558890).jpg"
+ },
+ "shrimp-veg": {
+  "a": "TOMW maowu LOU ShaSha",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:HK_SWH_%E8%A5%BF%E7%81%A3%E6%B2%B3_Sai_Wan_Ho_SKW_%E7%AD%B2%E7%AE%95%E7%81%A3%E9%81%93_33_Shau_Kei_Wan_Road_shop_%E9%BA%97%E7%81%A3%E5%A4%A7%E5%BB%88_Lai_Wan_Building_%E6%B5%B7%E5%AF%B6%E6%BC%81%E6%B8%AF_Ocean_Treasure_Seafood_Restaurant_diner_food_%E8%A5%BF%E8%98%AD%E8%8A%B1%E5%A4%A7%E8%9D%A6%E4%BB%81_Stir-fry_broccoli_with_peeled_shrimp_March_2026_N13P_03.jpg"
+ },
+ "fried-pelmeni": {
+  "a": "Pannet",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B5%D0%BB%D1%8C%D0%BC%D0%B5%D0%BD%D0%B8_%D0%B6%D0%B0%D1%80%D0%B5%D0%BD%D1%8B%D0%B5.jpg"
+ },
+ "pasta-bake": {
+  "a": "Scott Veg",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Baked_macaroni_and_cheese_close-up.jpg"
+ },
+ "sunny-eggs": {
+  "a": "Kurt Kaiser",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Fried_egg_sunny_side_up_5.jpg"
+ },
+ "baby-potatoes": {
+  "a": "Johan Jönsson (Julle)",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Midsommarmat_2025_08.jpg"
+ },
+ "cheese-crust-chicken": {
+  "a": "jenvargas from Orlando, United States",
+  "l": "CC BY-SA 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:My_@Carrabbas_favorite_dish_so_far%3F_The_Parmesan-Crusted_Chicken._-FirstTastes_(11826337813).jpg"
+ },
+ "eggplant-crispy": {
+  "a": "gran",
+  "l": "CC BY 3.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Fried_sliced_eggplant.jpg"
+ },
+ "bacon-chicken": {
+  "a": "Michele Frazier from USA",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Bacon-wrapped_Chicken_Breast_(10508565854).jpg"
+ },
+ "hot-sandwiches": {
+  "a": "jeffreyw",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Hot_ham_and_cheese_sandwich_(2).jpg"
+ },
+ "duck-legs": {
+  "a": "en:User:MCB",
+  "l": "CC BY-SA 2.5",
+  "u": "https://commons.wikimedia.org/wiki/File:MCB-duck-leg-confit.jpg"
+ },
+ "puff-baskets": {
+  "a": "Jill M",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Tomato_and_mushroom_tarts,_2009.jpg"
+ },
+ "cabbage-pie": {
+  "a": "Kolforn (Kolforn) I'd appreciate if you could mail me (Kolforn@gmail.com) if you",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:-2020-12-27_Sauasge_rolls,_pork_pie_and_pickled_red_cabbage,_Trimingham_(2).JPG"
+ },
+ "strudel": {
+  "a": "Burkhard Mücke",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Wiener_Apfelstrudel.jpg"
+ },
+ "meat-pies": {
+  "a": "Pannet",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B8%D1%80%D0%BE%D0%B6%D0%BA%D0%B8_03.jpg"
+ },
+ "banana-bread": {
+  "a": "Shisma",
+  "l": "CC BY 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Banana_bread_slices.jpg"
+ },
+ "vatrushki": {
+  "a": "Ji-Elle",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Vatrushka_(Novgorod).jpg"
+ },
+ "cherry-muffins": {
+  "a": "Katrin Gilger",
+  "l": "CC BY-SA 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Chocolate_Muffins_Apple_Streusel_Muffins_(4671059615).jpg"
+ },
+ "orange-cake": {
+  "a": "Andy Li",
+  "l": "CC0",
+  "u": "https://commons.wikimedia.org/wiki/File:Orange_and_chocolate_cake_-_Dyke_Road_Park_Cafe_2025-10-10.jpg"
+ },
+ "chicken-crust-pizza": {
+  "a": "Basile Morin",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Homemade_pizza_tomato_mozarella.jpg"
+ },
+ "zucchini-boats": {
+  "a": "USDAgov",
+  "l": "Public domain",
+  "u": "https://commons.wikimedia.org/wiki/File:Child_Care_Recipes_(Team_Nutiriton)_(20211103-FNS-UNC-8896).jpg"
+ },
+ "pork-prunes": {
+  "a": "MOs810",
+  "l": "CC BY-SA 4.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Pork_loin_with_apricots.jpg"
+ },
+ "eggplant-rolls": {
+  "a": "Karen and Brad Emerson",
+  "l": "CC BY 2.0",
+  "u": "https://commons.wikimedia.org/wiki/File:Egglplant_(5996343904).jpg"
  }
 };

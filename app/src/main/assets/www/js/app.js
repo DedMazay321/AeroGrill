@@ -282,14 +282,16 @@ function recipeMatches(r) {
   if (st.flt.fast && r.prep + r.cook > 30) return false;
   if (st.flt.protein && perServing(r)[1] < 25) return false;
   if (st.flt.light && perServing(r)[0] > 350) return false;
+  if (st.flt.world && !r.cuisine) return false;
+  if (st.flt.fest && !r.fest) return false;
   if (st.flt.cooked && !ck(r.id).n) return false;
   if (st.flt.fresh && ck(r.id).n) return false;
   const q = st.q.trim().toLowerCase();
-  return !q || r.name.toLowerCase().includes(q) || r.prog.toLowerCase().includes(q) || r.ing.some(i => ING[i[0]].n.toLowerCase().includes(q));
+  return !q || r.name.toLowerCase().includes(q) || (r.cuisine || '').toLowerCase().includes(q) || r.prog.toLowerCase().includes(q) || r.ing.some(i => ING[i[0]].n.toLowerCase().includes(q));
 }
 function recipeCard(r) {
   return `<a class="rcard" href="#/r/${r.id}">${tile(r)}<div class="grow"><h3>${r.name}</h3>
-    <div class="meta"><span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${ck(r.id).rate ? `<span class="rate">★ ${ck(r.id).rate}</span>` : ''}${ck(r.id).n ? `<span>✓ готовил${ck(r.id).n > 1 ? ' ×' + ck(r.id).n : ''}</span>` : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
+    <div class="meta">${r.cuisine ? `<span>🌍 ${r.cuisine}</span>` : ''}<span>⏱ ${dur(r.prep + r.cook)}</span><span>«${r.prog}» ${r.temp} °C</span>${r.steam ? '<span class="steam">💨 пар</span>' : ''}${ck(r.id).rate ? `<span class="rate">★ ${ck(r.id).rate}</span>` : ''}${ck(r.id).n ? `<span>✓ готовил${ck(r.id).n > 1 ? ' ×' + ck(r.id).n : ''}</span>` : ''}${doneCount(r) ? `<span class="badge ${doneCount(r) === r.steps.length ? 'ok' : ''}">шаги ${doneCount(r)}/${r.steps.length}</span>` : ''}</div>
     <div class="kb">${kbLine(perServing(r))}</div></div>
     <button class="fav ${st.fav[r.id] ? 'on' : ''}" data-act="fav" data-id="${r.id}">⭐</button></a>`;
 }
@@ -322,7 +324,7 @@ function featureHtml() {
     <div class="row" style="margin-top:18px"><a class="btn sm" href="#/r/${r.id}">Открыть рецепт</a><button class="btn sm ghost glass" data-act="feature-next">Другой рецепт ›</button></div></div></section>`;
 }
 function viewRecipes() {
-  const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал'], ['cooked', '✓ Готовил'], ['fresh', '🆕 Не пробовал']];
+  const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал'], ['world', '🌍 Кухни мира'], ['fest', '🎉 Праздничное'], ['cooked', '✓ Готовил'], ['fresh', '🆕 Не пробовал']];
   return `<div id="updb">${updateBanner()}</div>${featureHtml()}<h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
     <div class="search-wrap"><input class="search" type="search" placeholder="Блюдо, продукт или программа" value="${esc(st.q)}" data-search></div>
     <div class="chips"><button class="chip ${st.cat === 'all' ? 'on' : ''}" data-act="cat" data-v="all">Все</button>
@@ -357,7 +359,7 @@ function viewRecipe(id, fit) {
     <div class="rgrid"><div class="rside">
     ${ph ? `<div class="photo"><img src="img/${id}.jpg" alt=""><a href="${esc(ph.u)}" target="_blank" rel="noopener">Фото: ${esc(ph.a)} · ${esc(ph.l)}</a></div>` : ''}
     <div class="hero">${ph ? '' : tile(r)}<div><h1>${r.name}</h1>
-      <p class="muted small">${CATS[r.cat]} · подготовка ${dur(r.prep)} · готовка ${dur(r.cook)}</p></div></div>
+      <p class="muted small">${r.cuisine ? r.cuisine + ' кухня · ' : ''}${CATS[r.cat]} · подготовка ${dur(r.prep)} · готовка ${dur(r.cook)}</p></div></div>
     ${m ? `<div class="note tip">🎯 Количество продуктов подстроено под вашу цель по КБЖУ. <a data-act="unfit" style="color:var(--accent);font-weight:600">Показать исходный рецепт</a></div>` : ''}
     <div class="card"><div class="panel">
       <div class="cell"><small>Программа</small><b>${r.prog}</b></div>
@@ -575,16 +577,25 @@ function viewGuide() {
       <div class="cell"><small>Температура</small><b>50–200 °C</b></div><div class="cell"><small>Таймер</small><b>до 120 мин</b></div>
       <div class="cell"><small>Отложенный старт</small><b>до 24 ч</b></div><div class="cell"><small>Нагрев</small><b>2 ТЭНа, 360°</b></div></div></div>
     <h2>12 программ</h2>
-    <div class="card"><table><tr><th>Программа</th><th>Для чего</th><th>Настройки в рецептах</th></tr>
-      ${PROGRAMS.map(p => `<tr><td><b>${p.e} ${p.n}</b></td><td>${p.d}</td><td>${p.r}</td></tr>`).join('')}</table>
-      <p class="small muted" style="margin-top:8px">В каждом рецепте указаны точные температура и время — выберите программу и выставьте их на панели. Заводские значения программ смотрите в руководстве к прибору.</p></div>
+    <div class="card"><table><tr><th>Программа</th><th>Для чего</th><th>Заводские настройки</th></tr>
+      ${PROGRAMS.map(p => `<tr><td><b>${p.e} ${p.n}</b></td><td>${p.d}</td><td>${p.f[0]} °C · ${p.f[1]} мин<br><span class="muted">порция ${p.f[2]} · ${p.f[3]}</span></td></tr>`).join('')}</table>
+      <p class="small muted" style="margin-top:8px">Значения — из руководства к WAF 720 DB. В рецептах указаны свои температура и время: выберите программу, нажмите кнопку времени или температуры и выставьте их кнопками «+» и «−» (80–200 °C, 1–120 минут). Чем больше порция, тем больше может понадобиться времени.</p></div>
+    <h2>⚙️ Панель управления</h2>
+    <div class="card"><ul>
+      <li><b>Ручной режим</b> — без программы: сами задаёте температуру и время.</li>
+      <li><b>Скорость вентилятора</b> — три ступени: F01, F02, F03. Для лёгких продуктов, сушки, безе и блюд с сыром сверху ставьте F01, чтобы ничего не сдувало.</li>
+      <li><b>Верхний и нижний ТЭН</b> включаются по отдельности — например, только верхний, чтобы подрумянить сыр.</li>
+      <li><b>Отложенный старт</b> — от 1 до 24 часов. Не используйте его для мяса, рыбы и молочного: продукты испортятся, пока ждут.</li>
+      <li><b>Пауза</b> — повторное нажатие кнопки «Старт». Если снять чашу, на экране появится «OPEN», нагрев остановится и продолжится, когда вернёте чашу.</li>
+      <li>По окончании — 5 сигналов и надпись «End». Вентилятор ещё немного работает, чтобы остудить ТЭН.</li></ul></div>
     <h2>💨 Функция «Пар»</h2>
-    <div class="card"><ul><li>Перед готовкой налейте в резервуар чистую воду (лучше фильтрованную — меньше накипи).</li>
-      <li>Включайте пар для постного мяса, филе птицы, рыбы, рёбер, котлет и овощей — они не пересыхают.</li>
-      <li>Для хрустящей корочки (фри, крылья, панировка) пар не нужен. В рецептах с глазурью и сыром пар выключается на последнем этапе.</li>
+    <div class="card"><ul><li>Снимите крышку резервуара для воды, налейте чистую холодную воду и закройте крышку.</li>
+      <li>Пар включается во время приготовления: нажмите кнопку «Пар» — загорится её индикатор. Если воды не хватает, загорится индикатор отсутствия воды.</li>
+      <li>Пар нужен постному мясу, филе птицы, рыбе, рёбрам, котлетам и овощам — они не пересыхают.</li>
+      <li>Для хрустящей корочки (фри, крылья, панировка) пар не нужен. В рецептах с глазурью и сыром его отключают на последнем этапе.</li>
       <li>После готовки слейте остатки воды и протрите резервуар.</li></ul></div>
     <h2>🍏 Дегидратор</h2>
-    <div class="card"><table><tr><th>Продукт</th><th>Нарезка</th><th>°C</th><th>Время</th></tr>
+    <div class="card"><p class="small muted" style="margin-bottom:8px">Заводская настройка программы — 80 °C и 120 минут, вентилятор F01. Таймер не длиннее 120 минут, поэтому долгую сушку запускайте несколько раз подряд.</p><table><tr><th>Продукт</th><th>Нарезка</th><th>°C</th><th>Время</th></tr>
       <tr><td>Яблоки, груши</td><td>кольца 2–3 мм</td><td>60</td><td>4–6 ч</td></tr>
       <tr><td>Бананы</td><td>кружки 4–5 мм</td><td>65</td><td>4–6 ч</td></tr>
       <tr><td>Помидоры</td><td>половинки черри</td><td>70</td><td>5–7 ч</td></tr>

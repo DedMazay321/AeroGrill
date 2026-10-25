@@ -1,3 +1,3 @@
 'use strict';
 // Номер версии страниц. Файл обновляет tools/release.sh
-const WEB_VERSION = '1.8.1';
+const WEB_VERSION = '1.9.0';
