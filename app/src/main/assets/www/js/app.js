@@ -309,9 +309,21 @@ function listHtml() {
       <select class="sortsel" data-sel="sort">${Object.keys(SORTS).map(k => `<option value="${k}" ${st.sort === k ? 'selected' : ''}>${SORTS[k][0]}</option>`).join('')}</select></div>`
     + (list.length ? list.map(recipeCard).join('') : '<div class="empty">Ничего не найдено.<br>Измените запрос или фильтры.</div>');
 }
+function featured() {
+  const pool = RECIPES.filter(r => PHOTOS[r.id] && r.meal.includes('m'));
+  const day = Math.floor(Date.now() / 86400000), i = (day + (st.featOff || 0)) % pool.length;
+  return pool[(i + pool.length) % pool.length];
+}
+function featureHtml() {
+  const r = featured(), n = perServing(r);
+  return `<section class="feature desk-only" style="background-image:url('img/${r.id}.jpg')"><div class="feature-in">
+    <span class="eyebrow">Рецепт дня</span><h1>${r.name}</h1>
+    <p>⏱ ${dur(r.prep + r.cook)} · программа «${r.prog}» · ${r.temp} °C${r.steam ? ' · 💨 с паром' : ''} · ${Math.round(n[0])} ккал на порцию</p>
+    <div class="row" style="margin-top:18px"><a class="btn sm" href="#/r/${r.id}">Открыть рецепт</a><button class="btn sm ghost glass" data-act="feature-next">Другой рецепт ›</button></div></div></section>`;
+}
 function viewRecipes() {
   const flt = [['fav', '⭐ Избранное'], ['fast', '⏱ До 30 минут'], ['steam', '💨 С паром'], ['protein', '💪 Белок от 25 г'], ['light', '🥗 До 350 ккал'], ['cooked', '✓ Готовил'], ['fresh', '🆕 Не пробовал']];
-  return `<div id="updb">${updateBanner()}</div><h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
+  return `<div id="updb">${updateBanner()}</div>${featureHtml()}<h1>Рецепты для аэрогриля</h1><p class="muted small">${RECIPES.length} рецептов · Weissgauff WAF 720 DB Steam Fry</p>
     <div class="search-wrap"><input class="search" type="search" placeholder="Блюдо, продукт или программа" value="${esc(st.q)}" data-search></div>
     <div class="chips"><button class="chip ${st.cat === 'all' ? 'on' : ''}" data-act="cat" data-v="all">Все</button>
       ${Object.keys(CATS).map(c => `<button class="chip ${st.cat === c ? 'on' : ''}" data-act="cat" data-v="${c}">${CATS[c]}</button>`).join('')}</div>
@@ -342,6 +354,7 @@ function viewRecipe(id, fit) {
     <p class="small" style="margin-top:12px">Нужно продуктов ≈ <b>${weight >= 1000 ? num(weight / 1000) + ' кг' : weight + ' г'}</b> · на все порции <b>${Math.round(n[0] * p)} ккал</b></p></div>${loadNote}`;
   return `<div class="top"><button class="icon-btn" data-act="back">‹</button>
       <button class="icon-btn fav ${st.fav[id] ? 'on' : ''}" data-act="fav" data-id="${id}">⭐</button></div>
+    <div class="rgrid"><div class="rside">
     ${ph ? `<div class="photo"><img src="img/${id}.jpg" alt=""><a href="${esc(ph.u)}" target="_blank" rel="noopener">Фото: ${esc(ph.a)} · ${esc(ph.l)}</a></div>` : ''}
     <div class="hero">${ph ? '' : tile(r)}<div><h1>${r.name}</h1>
       <p class="muted small">${CATS[r.cat]} · подготовка ${dur(r.prep)} · готовка ${dur(r.cook)}</p></div></div>
@@ -358,6 +371,7 @@ function viewRecipe(id, fit) {
       ${extras(r, p).map(e => `<div class="ing"><span>${e[0]}</span><span>${e[1] || ''}</span></div>`).join('')}</div>
     <button class="btn ghost" data-act="shop-recipe">🛒 Добавить продукты в список покупок</button>
     ${list.some(a => st.pantry[a.id]) ? `<button class="btn ghost" style="margin-top:8px" data-act="shop-missing">🛒 Только то, чего нет дома (${list.filter(a => !st.pantry[a.id]).length})</button>` : ''}
+    </div><div class="rmain">
     <div class="row between"><h2>Приготовление</h2>
       <span class="row"><span class="badge ${nDone === total ? 'ok' : ''}">${nDone} из ${total}</span>${nDone ? '<button class="btn sm ghost" data-act="steps-reset">Сбросить</button>' : ''}</span></div>
     <div class="track" style="margin-bottom:10px"><i style="width:${nDone / total * 100}%"></i></div>
@@ -372,7 +386,8 @@ function viewRecipe(id, fit) {
     <div class="card"><div class="stars">${[1, 2, 3, 4, 5].map(v => `<button class="${v <= c.rate ? 'on' : ''}" data-act="rate" data-v="${v}">★</button>`).join('')}</div>
       <p class="small muted" style="margin:6px 0 12px">${c.n ? 'Готовили ' + c.n + ' ' + (c.n % 10 === 1 && c.n !== 11 ? 'раз' : c.n % 10 >= 2 && c.n % 10 <= 4 && (c.n < 10 || c.n > 20) ? 'раза' : 'раз') + ', последний — ' + new Date(c.last).toLocaleDateString('ru-RU') : 'Вы ещё не готовили это блюдо'}${c.rate && c.rate <= 2 ? '. С такой оценкой блюдо не попадёт в меню.' : ''}</p>
       <button class="btn ghost" data-act="cooked">✓ Отметить, что приготовил</button>
-      ${c.n ? '<button class="btn sm ghost" style="margin-top:8px;width:100%" data-act="uncooked">Убрать одну отметку</button>' : ''}</div>`;
+      ${c.n ? '<button class="btn sm ghost" style="margin-top:8px;width:100%" data-act="uncooked">Убрать одну отметку</button>' : ''}</div>
+    </div></div>`;
 }
 // Режим готовки: один шаг на экран крупным текстом. Экран −1 — список продуктов.
 function viewCook(id, fit) {
@@ -793,6 +808,7 @@ function render(keepScroll) {
   const cook = page === 'r' && rest.includes('cook'), mode = rest.includes('fit') ? 'fit' : '';
   document.body.classList.toggle('cooking', cook);
   document.body.classList.toggle('catalog', page !== 'r' && (!page || page === ''));
+  document.body.classList.toggle('recipe', page === 'r' && !cook);
   const tab = page === 'kbju' || page === 'shop' || page === 'guide' || page === 'pantry' ? page : 'recipes';
   const y = window.scrollY;
   $('#view').innerHTML = cook ? viewCook(id, mode === 'fit') : page === 'r' ? viewRecipe(id, mode === 'fit') : tab === 'kbju' ? viewKbju() : tab === 'shop' ? viewShop() : tab === 'guide' ? viewGuide() : tab === 'pantry' ? viewPantry() : viewRecipes();
@@ -803,6 +819,7 @@ window.addEventListener('hashchange', () => render(false));
 
 const ACTIONS = {
   cat: v => { st.cat = v; },
+  'feature-next': () => { st.featOff = (st.featOff || 0) + 1; },
   flt: v => { st.flt[v] = !st.flt[v]; },
   fav: (v, el) => { st.fav[el.dataset.id] = !st.fav[el.dataset.id]; },
   back: () => { if (history.length > 1) history.back(); else location.hash = '#/'; return false; },
@@ -887,6 +904,17 @@ document.addEventListener('click', e => {
   save();
   render(true);
 });
+document.addEventListener('keydown', e => {
+  const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if (e.key === '/' && !typing) {
+    const box = $('[data-search]') || $('[data-psearch]');
+    if (box) { e.preventDefault(); box.focus(); }
+  } else if (e.key === 'Escape') {
+    if (!$('#modal').hidden) { $('#modal').hidden = true; finished = []; }
+    else if (typing) document.activeElement.blur();
+    else if (location.hash.startsWith('#/r/')) history.back();
+  }
+});
 document.addEventListener('change', e => {
   if (e.target.dataset.sel) { st[e.target.dataset.sel] = e.target.value; save(); $('#list').innerHTML = listHtml(); return; }
   const bind = e.target.dataset.bind;
@@ -904,6 +932,7 @@ document.addEventListener('input', e => {
 
 render(false);
 tick();
+if ($('#sidever')) $('#sidever').textContent = VERSION ? 'Версия ' + VERSION : '';
 // Сайт: работа без интернета и просьба не удалять данные при нехватке места
 if (WEB && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 if (WEB && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
