@@ -375,7 +375,7 @@ function viewRecipe(id, fit) {
   const list = amounts(r, rv.portions, m), n = nutri(list).map(v => v / rv.portions), ph = PHOTOS[id], c = ck(id);
   const weight = list.reduce((a, x) => a + x.g, 0), load = weight / r.ing.reduce((a, i) => a + i[1], 0);
   // Исходный рецепт рассчитан на одну закладку в чашу 7 л: если продуктов заметно больше — нужно несколько заходов
-  const batches = Math.max(1, Math.ceil(load - 0.2)), p = rv.portions;
+  const batches = Math.max(1, Math.ceil(load - 0.2)), p = rv.portions, pc = typeof PRICES !== 'undefined' ? portionCost(r, list, p) : 0;
   const loadNote = batches > 1
     ? `<div class="note">⚠️ Всё сразу в чашу не поместится: готовьте в <b>${batches} ${batches < 5 ? 'захода' : 'заходов'}</b>, примерно по ${Math.ceil(p / batches)} ${PORT_WORD(Math.ceil(p / batches))}. Температура и время в шагах — на один заход. Куски кладите в один слой.</div>`
     : load < 0.55 ? '<div class="note tip">Продуктов меньше, чем в исходном рецепте: проверьте готовность на 2–4 минуты раньше указанного.</div>' : '';
@@ -383,7 +383,8 @@ function viewRecipe(id, fit) {
       <div class="small muted">${m ? 'Подобрано под вашу норму КБЖУ — на 1 человека' : 'Рецепт рассчитан на ' + r.serves + ' ' + PORT_WORD(r.serves)}</div></div>
       <div class="stepper"><button data-act="portions" data-v="-1">−</button><b>${p}</b><button data-act="portions" data-v="1">+</button></div></div>
     <div class="chips wrap" style="margin-top:12px">${[1, 2, 3, 4, 6, 8].map(v => `<button class="chip ${v === p ? 'on' : ''}" data-act="portions-set" data-v="${v}">${v}</button>`).join('')}</div>
-    <p class="small" style="margin-top:12px">Нужно продуктов ≈ <b>${weight >= 1000 ? num(weight / 1000) + ' кг' : weight + ' г'}</b> · на все порции <b>${Math.round(n[0] * p)} ккал</b></p></div>${loadNote}`;
+    <p class="small" style="margin-top:12px">Нужно продуктов ≈ <b>${weight >= 1000 ? num(weight / 1000) + ' кг' : weight + ' г'}</b> · на все порции <b>${Math.round(n[0] * p)} ккал</b>${pc ? ` · ≈ <b>${rub(pc)}</b> на порцию` : ''}</p>
+    ${pc ? `<p class="small muted">Стоимость — по ценам «Пятёрочки» на ${ruDate(PRICES.updated['Пятёрочка'])}, без специй.</p>` : ''}</div>${loadNote}`;
   return `<div class="top"><button class="icon-btn" data-act="back">‹</button>
       <button class="icon-btn fav ${st.fav[id] ? 'on' : ''}" data-act="fav" data-id="${id}">⭐</button></div>
     <div class="rgrid"><div class="rside">
@@ -592,21 +593,78 @@ function addToShop(list, extras) {
 function addMenus(menus) {
   menus.forEach(m => m.slots.forEach(sl => sl.items.forEach(it => { const r = byId(it.id); addToShop(amounts(r, st.persons, it.m), r.extra); })));
 }
+/* ---------- Цены «Пятёрочки» ---------- */
+const rub = v => Math.round(v).toLocaleString('ru-RU') + ' ₽';
+const priceInfo = id => (typeof PRICES !== 'undefined' && PRICES.offers[id]) || null;
+// Сколько и чего купить: товар магазина, число упаковок и стоимость для нужных граммов продукта
+function buyFor(id, grams) {
+  const info = priceInfo(id);
+  if (!info) return null;
+  const pick = (st.shop.pick || {})[id] || 0, o = info.list[Math.min(pick, info.list.length - 1)], g = grams * info.conv;
+  if (o.w) return { o, info, packs: 0, label: '≈ ' + (g >= 1000 ? num(g / 1000) + ' кг' : roundG(g) + ' г') + ' на развес', cost: g / 100 * o.p, old: o.o ? g / 100 * o.o : 0 };
+  const units = o.u === 'pcs' ? Math.ceil(g / (info.pcs || 55)) : g;
+  const packs = Math.max(1, Math.ceil(units / o.s - 0.05));
+  return { o, info, packs, label: packs + ' уп.', cost: packs * o.p, old: o.o ? packs * o.o : 0 };
+}
+// Стоимость продуктов на одну порцию (по цене за 100 г, без округления до упаковок)
+function portionCost(r, list, portions) {
+  let sum = 0, priced = 0, all = 0;
+  list.forEach(a => {
+    all += a.g;
+    const info = priceInfo(a.id);
+    if (!info) return;
+    const o = info.list[0], g = a.g * info.conv;
+    sum += o.w ? g / 100 * o.p : o.u === 'pcs' ? Math.ceil(g / (info.pcs || 55)) * o.p / o.s : g / o.s * o.p;
+    priced += a.g;
+  });
+  return all && priced / all >= 0.7 ? sum / portions : 0;
+}
+// Фото товара поверх значка: если картинка магазина не загрузится, останется значок
+const thumb = o => `<span class="pthumb ph">🛒${o && o.i ? `<img src="${esc(o.i)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+
 function viewShop() {
   const ids = Object.keys(st.shop.items);
   if (!ids.length && !st.shop.extras.length) return `<h1>Список покупок</h1><div class="empty">Пока пусто.<br>Добавьте продукты из рецепта или из меню на день.</div>`;
-  const check = (key, name, amt) => `<button class="check ${st.shop.done[key] ? 'on' : ''}" data-act="check" data-v="${esc(key)}"><i>✓</i><span class="grow">${name}</span><span class="muted">${amt}</span></button>`;
-  const left = ids.filter(i => !st.shop.done[i]).length + st.shop.extras.filter(x => !st.shop.done['x:' + x]).length;
+  // То, что отмечено во вкладке «Дома» и ещё не куплено, покупать не нужно — оно в конце списка и не входит в сумму
+  const atHome = id => st.pantry[id] && !st.shop.done[id];
+  const all = ids.map(id => ({ id, g: st.shop.items[id], b: buyFor(id, st.shop.items[id]) }));
+  const rows = all.filter(x => !atHome(x.id)), home = all.filter(x => atHome(x.id));
+  const priced = rows.filter(x => x.b), total = priced.reduce((s, x) => s + x.b.cost, 0);
+  const left = priced.filter(x => !st.shop.done[x.id]).reduce((s, x) => s + x.b.cost, 0);
+  const saved = priced.reduce((s, x) => s + (x.b.old ? x.b.old - x.b.cost : 0), 0);
+  const leftCount = ids.filter(i => !st.shop.done[i]).length + st.shop.extras.filter(x => !st.shop.done['x:' + x]).length;
+  const date = PRICES.updated['Пятёрочка'], noPrice = rows.length - priced.length;
+  const need = x => { const u = ING[x.id].u; return u ? frac(Math.ceil(x.g / u[1] * 2) / 2) + ' ' + u[0] : x.g >= 1000 ? num(x.g / 1000) + ' кг' : roundG(x.g) + ' г'; };
+  const row = x => {
+    const done = !!st.shop.done[x.id], b = x.b;
+    return `<div class="prow ${done ? 'on' : ''}">
+      <button class="check ${done ? 'on' : ''}" data-act="check" data-v="${x.id}" aria-label="Куплено"><i>✓</i></button>
+      ${thumb(b && b.o)}
+      <div class="grow"><b class="pname">${b ? esc(b.o.n) : ING[x.id].n}</b>
+        <small class="muted">${b ? b.label + ' · по рецептам нужно ' + need(x) + (b.info.store !== 'Пятёрочка' ? ' · цена «' + b.info.store + '»' : '') : need(x) + ' · нет цены в «Пятёрочке»'}${b && b.info.list.length > 1 ? ` · <a data-act="alt" data-v="${x.id}" class="alink">другой товар</a>` : ''}</small></div>
+      <div class="pcost">${b ? `<b>${rub(b.cost)}</b>${b.old ? `<s>${rub(b.old)}</s><span class="sale">−${Math.round((1 - b.cost / b.old) * 100)}%</span>` : ''}` : '<span class="muted">—</span>'}</div></div>`;
+  };
   return `<div class="row between"><h1>Список покупок</h1><button class="btn sm ghost" data-act="shop-clear">Очистить</button></div>
-    <p class="muted small" style="margin-bottom:12px">Осталось купить: ${left}</p>
-    ${Object.keys(SECTIONS).map(s => {
-      const part = ids.filter(i => ING[i].s === s).sort((a, b) => ING[a].n.localeCompare(ING[b].n, 'ru'));
-      return !part.length ? '' : `<h2>${SECTIONS[s]}</h2><div class="card">${part.map(i => {
-        const g = st.shop.items[i], u = ING[i].u;
-        return check(i, ING[i].n, u ? frac(Math.ceil(g / u[1] * 2) / 2) + ' ' + u[0] : g >= 1000 ? num(g / 1000) + ' кг' : roundG(g) + ' г');
-      }).join('')}</div>`;
+    <div class="card totals"><div><small class="muted">Всего</small><b class="big">${rub(total)}</b></div>
+      <div><small class="muted">Осталось купить</small><b class="big">${rub(left)}</b></div>
+      <p class="small muted" style="grid-column:1/-1">Цены «Пятёрочки» на ${ruDate(date)}${noPrice ? `, без цены ${noPrice} из ${rows.length} — к сумме не прибавлены` : ''}. Отмечайте купленное — оно попадёт во вкладку «Дома».</p></div>
+    ${saved >= 1 ? `<div class="note ok">🏷 Скидки экономят <b>${rub(saved)}</b> — без них список стоил бы ${rub(total + saved)}</div>` : ''}
+    <p class="muted small">Осталось позиций: ${leftCount}</p>
+    ${Object.keys(SECTIONS).map(sec => {
+      const part = rows.filter(x => ING[x.id].s === sec).sort((a, b) => ING[a.id].n.localeCompare(ING[b.id].n, 'ru'));
+      return !part.length ? '' : `<h2>${SECTIONS[sec]}</h2><div class="card plist">${part.map(row).join('')}</div>`;
     }).join('')}
-    ${st.shop.extras.length ? `<h2>Специи и мелочи</h2><div class="card">${st.shop.extras.map(x => check('x:' + x, x, '')).join('')}</div>` : ''}`;
+    ${home.length ? `<h2>Уже есть дома</h2><p class="small muted" style="margin:-4px 0 8px">Отмечено во вкладке «Дома», в сумму не входит</p><div class="card plist">${home.map(x => `<div class="prow"><span class="pthumb ph">🏠</span><div class="grow"><b class="pname">${ING[x.id].n}</b><small class="muted">по рецептам нужно ${need(x)}</small></div></div>`).join('')}</div>` : ''}
+    ${st.shop.extras.length ? `<h2>Специи и мелочи</h2><div class="card">${st.shop.extras.map(x => `<button class="check ${st.shop.done['x:' + x] ? 'on' : ''}" data-act="check" data-v="${esc('x:' + x)}"><i>✓</i><span class="grow">${x}</span></button>`).join('')}</div>` : ''}`;
+}
+// Окно выбора товара: все найденные варианты от самого выгодного
+function altModal(id) {
+  const info = priceInfo(id), g = st.shop.items[id], cur = (st.shop.pick || {})[id] || 0;
+  $('#modal').innerHTML = `<div class="box alt"><h2 style="margin-top:0">${ING[id].n}</h2><p class="small muted">Нужно ${roundG(g)} г · от самого выгодного</p>
+    ${info.list.map((o, i) => { const save0 = st.shop.pick; st.shop.pick = Object.assign({}, save0, { [id]: i }); const bb = buyFor(id, g); st.shop.pick = save0;
+      return `<button class="prow alt-row ${i === cur ? 'cur' : ''}" data-act="alt-pick" data-id="${id}" data-v="${i}">${thumb(o)}<span class="grow"><b class="pname">${esc(o.n)}</b><small class="muted">${bb.label}${o.w ? '' : ' · ' + rub(o.p) + ' за уп.'}</small></span><span class="pcost"><b>${rub(bb.cost)}</b>${bb.old ? `<s>${rub(bb.old)}</s>` : ''}</span></button>`; }).join('')}
+    <button class="btn ghost" style="margin-top:12px" data-act="modal-close">Закрыть</button></div>`;
+  $('#modal').hidden = false;
 }
 
 /* ---------- Экран: что есть дома ---------- */
@@ -1019,7 +1077,9 @@ const ACTIONS = {
   'modal-close': () => { $('#modal').hidden = true; finished = []; return false; },
   'shop-recipe': () => { const r = byId(rv.id); addToShop(amounts(r, rv.portions, rv.fit ? st.adapt[r.id] : null), r.extra); return false; },
   'shop-menu': () => { addMenus([st.menu]); return false; },
-  'shop-clear': () => { st.shop = { items: {}, extras: [], done: {} }; },
+  'shop-clear': () => { st.shop = { items: {}, extras: [], done: {}, pick: st.shop.pick || {} }; },
+  alt: v => { altModal(v); return false; },
+  'alt-pick': (v, el) => { st.shop.pick = Object.assign({}, st.shop.pick, { [el.dataset.id]: +v }); $('#modal').hidden = true; },
   check: v => { st.shop.done[v] = !st.shop.done[v]; if (st.shop.done[v] && ING[v]) st.pantry[v] = true; },
   ptab: v => { st.ptab = v; },
   pantry: v => { st.pantry[v] = !st.pantry[v]; },

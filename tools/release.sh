@@ -33,6 +33,9 @@ if [ -n "$LAST" ] && ! git diff --quiet "$LAST" -- app/src/main/java app/src/mai
   echo "Оболочка изменилась: это обновление потребует установки APK (оболочка $SHELL_VER)"
 fi
 
+# Свежие цены из «Копейки», если она есть на этом компьютере
+[ -d "${KOPEYKA:-E:/Finance}/tracker/data/stores" ] && node tools/prices.mjs
+
 export JAVA_HOME="${JAVA_HOME:-E:\\AndroidSdk\\jdk}"
 ./gradlew.bat assembleDebug -q --console=plain
 cp app/build/outputs/apk/debug/app-debug.apk AeroGrill.apk
