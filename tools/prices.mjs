@@ -4,11 +4,16 @@
 //
 //   node tools/prices.mjs            — пересобрать цены
 //   KOPEYKA=путь node tools/prices.mjs — если «Копейка» лежит в другой папке
+//   node tools/prices.mjs --publish  — выложить цены в ветку prices на GitHub (data-prices.js не трогает).
+//     Приложение при запуске берёт оттуда свежие цены. Запускается планировщиком Windows
+//     (задача «АэроГриль — цены»), журнал — build/prices-publish.log.
 //
 // Основной магазин — «Пятёрочка». Если товара там нет, берётся «Магнит» с пометкой магазина.
 import fs from 'node:fs'
 import path from 'node:path'
 import url from 'node:url'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 const ROOT = path.dirname(path.dirname(url.fileURLToPath(import.meta.url)))
 const STORES = path.join(process.env.KOPEYKA || 'E:/Finance', 'tracker/data/stores')
@@ -192,13 +197,53 @@ for (const [id, rule0] of Object.entries(RULES)) {
   offers[id] = { store, conv: rule.conv || 1, pcs: rule.pcs || 0, list: found.map(g => ({ n: g.name, p: g.price, o: g.old && g.old > g.price ? g.old : null, i: g.img, w: g.weighted ? 1 : 0, s: g.pack, u: g.unit })) }
 }
 
-const js = `'use strict';
+// at — когда собран файл: из двух наборов цен с одинаковыми датами приложение берёт более поздний
+const data = { updated: { 'Пятёрочка': pyat.updated, 'Магнит': magnit.updated }, at: new Date().toISOString(), offers }
+const summary = `Пятёрочка: ${report.pyat}, Магнит: ${report.magnit}, без цены: ${report.none.length} (${report.none.join(', ')})`
+
+if (process.argv.includes('--publish')) publish()
+else {
+  const js = `'use strict';
 // Цены для списка покупок. Файл создаёт tools/prices.mjs из каталогов, которые собирает «Копейка».
 // offers[продукт]: store — магазин, conv — граммов товара на грамм продукта, pcs — вес штуки (яйца),
 // list — товары от самого выгодного: n — название, p — цена, o — цена без скидки, i — фото,
 // w — весовой (цена за 100 г), s — фасовка, u — g или pcs.
-const PRICES = ${JSON.stringify({ updated: { 'Пятёрочка': pyat.updated, 'Магнит': magnit.updated }, offers })};
+const PRICES = ${JSON.stringify(data)};
 `
-fs.writeFileSync(OUT, js)
-console.log(`Пятёрочка: ${report.pyat}, Магнит: ${report.magnit}, без цены: ${report.none.length} (${report.none.join(', ')})`)
-console.log(`Обновлено: Пятёрочка ${pyat.updated}, Магнит ${magnit.updated}; файл ${Math.round(js.length / 1024)} КБ`)
+  fs.writeFileSync(OUT, js)
+  console.log(summary)
+  console.log(`Обновлено: Пятёрочка ${pyat.updated}, Магнит ${magnit.updated}; файл ${Math.round(js.length / 1024)} КБ`)
+}
+
+// Выкладка в ветку prices: в ней один файл prices.json и одна, последняя, запись
+function publish() {
+  const BUILD = path.join(ROOT, 'build'), WORK = path.join(BUILD, 'prices-upload'), STATE = path.join(BUILD, 'prices-published.json')
+  const LOG = path.join(BUILD, 'prices-publish.log')
+  fs.mkdirSync(BUILD, { recursive: true })
+  const log = msg => { console.log(msg); fs.appendFileSync(LOG, `${new Date().toISOString()} ${msg}\n`) }
+  // без каталогов «Копейки» или при сбое сбора не затираем хорошие цены пустыми
+  if (Object.keys(offers).length < 20) { log(`Не выкладываю: найдено только ${Object.keys(offers).length} продуктов. ${summary}`); process.exit(1) }
+  const hash = createHash('sha256').update(JSON.stringify({ updated: data.updated, offers })).digest('hex')
+  const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : {}
+  if (state.hash === hash) { log('Цены не изменились'); return }
+  const git = args => execFileSync('git', args, {
+    cwd: WORK, stdio: 'pipe', timeout: 120000, windowsHide: true,
+    // работает без окна: спросить пароль некого, поэтому при заминке со входом — сразу ошибка
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' }
+  })
+  try {
+    fs.rmSync(WORK, { recursive: true, force: true })
+    fs.mkdirSync(WORK, { recursive: true })
+    fs.writeFileSync(path.join(WORK, 'prices.json'), JSON.stringify(data))
+    fs.writeFileSync(path.join(WORK, '.gitattributes'), '* -text\n')
+    git(['init', '-q', '-b', 'prices'])
+    git(['add', '-A'])
+    git(['-c', 'user.name=AeroGrill', '-c', 'user.email=aerogrill@localhost', 'commit', '-q', '-m', 'prices'])
+    git(['push', '-q', '--force', 'https://github.com/DedMazay321/AeroGrill.git', 'prices'])
+    fs.writeFileSync(STATE, JSON.stringify({ hash, at: data.at }))
+    log(`Цены выложены. ${summary}; Пятёрочка ${pyat.updated}, Магнит ${magnit.updated}`)
+  } catch (e) {
+    log('Не удалось выложить цены: ' + String(e.stderr || e.message).trim().split('\n').pop())
+    process.exit(1)
+  }
+}

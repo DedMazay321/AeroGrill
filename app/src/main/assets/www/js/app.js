@@ -1159,8 +1159,34 @@ document.addEventListener('input', e => {
   $('#list').innerHTML = listHtml();
 });
 
+// Свежие цены: компьютер сам выкладывает их в ветку prices на GitHub (tools/prices.mjs --publish),
+// приложение берёт их оттуда без выпуска новой версии. Встроенные цены — запасной вариант.
+const PRICES_URL = 'https://raw.githubusercontent.com/' + REPO + '/prices/prices.json', PRICES_LS = 'aerogrill-prices';
+const priceKey = p => [p.updated['Пятёрочка'] || '', p.updated['Магнит'] || '', p.at || ''].join('|');
+function usePrices(p) {
+  if (typeof PRICES === 'undefined' || !p || !p.updated || !p.offers || typeof p.offers !== 'object' || Object.keys(p.offers).length < 20) return false;
+  if (priceKey(p) <= priceKey(PRICES)) return false;
+  PRICES.updated = p.updated; PRICES.offers = p.offers; PRICES.at = p.at;
+  return true;
+}
+try { usePrices(JSON.parse(localStorage.getItem(PRICES_LS))); } catch (e) { /* нет сохранённых цен */ }
+async function refreshPrices() {
+  try {
+    const res = await fetch(PRICES_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const text = await res.text();
+    st.priceSeen = Date.now(); save();
+    if (!usePrices(JSON.parse(text))) return;
+    try { localStorage.setItem(PRICES_LS, text); } catch (e) { /* хранилище недоступно */ }
+    // открыты покупки или рецепт — перерисуем с новыми ценами, если человек ничего не вводит
+    const page = location.hash.split('/')[1];
+    if ((page === 'shop' || page === 'r') && !document.body.classList.contains('cooking') && !(document.activeElement && document.activeElement.matches('input, textarea'))) render(true);
+  } catch (e) { /* нет интернета — остаёмся на прежних ценах */ }
+}
+
 render(false);
 tick();
+if (Date.now() - (st.priceSeen || 0) > 3 * 3600000) refreshPrices();
 if ($('#sidever')) $('#sidever').textContent = VERSION ? 'Версия ' + VERSION : '';
 // Сайт: работа без интернета и просьба не удалять данные при нехватке места
 if (WEB && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
