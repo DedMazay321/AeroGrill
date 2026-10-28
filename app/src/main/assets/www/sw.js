@@ -1,6 +1,6 @@
 // Работа сайта без интернета. Страницы и скрипты берутся из сети, а если её нет — из кэша;
 // фото кэшируются по мере просмотра. Номер версии обновляет tools/release.sh
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const CACHE = 'aerogrill-' + VERSION;
 const CORE = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
   'js/version.js', 'js/data-ingredients.js', 'js/data-recipes.js', 'js/data-recipes-2.js', 'js/data-recipes-3.js',

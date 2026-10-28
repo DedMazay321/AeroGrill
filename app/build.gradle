@@ -10,8 +10,8 @@ android {
         applicationId 'ru.aerogrill.app'
         minSdk 26
         targetSdk 34
-        versionCode 15
-        versionName '2.2.0'
+        versionCode 16
+        versionName '2.3.0'
     }
 
     // Один и тот же ключ для всех сборок: иначе Android не установит обновление поверх старой версии.

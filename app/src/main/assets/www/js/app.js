@@ -647,7 +647,8 @@ function viewShop() {
   return `<div class="row between"><h1>Список покупок</h1><button class="btn sm ghost" data-act="shop-clear">Очистить</button></div>
     <div class="card totals"><div><small class="muted">Всего</small><b class="big">${rub(total)}</b></div>
       <div><small class="muted">Осталось купить</small><b class="big">${rub(left)}</b></div>
-      <p class="small muted" style="grid-column:1/-1">Цены «Пятёрочки» на ${ruDate(date)}${noPrice ? `, без цены ${noPrice} из ${rows.length} — к сумме не прибавлены` : ''}. Отмечайте купленное — оно попадёт во вкладку «Дома».</p></div>
+      <p class="small muted" style="grid-column:1/-1">Цены «Пятёрочки» на ${ruDate(date)}${noPrice ? `, без цены ${noPrice} из ${rows.length} — к сумме не прибавлены` : ''}. Отмечайте купленное — оно попадёт во вкладку «Дома».</p>
+      <button class="btn sm ghost" style="grid-column:1/-1;justify-self:start" data-act="prices-check">🔄 Проверить цены</button></div>
     ${saved >= 1 ? `<div class="note ok">🏷 Скидки экономят <b>${rub(saved)}</b> — без них список стоил бы ${rub(total + saved)}</div>` : ''}
     <p class="muted small">Осталось позиций: ${leftCount}</p>
     ${Object.keys(SECTIONS).map(sec => {
@@ -1117,6 +1118,7 @@ const ACTIONS = {
   dishType: v => { st.dishType = v; },
   find: () => { findDishes(); },
   'upd-check': () => { checkUpdate(); return false; },
+  'prices-check': (v, el) => { checkPricesNow(el); return false; },
   'upd-install': () => { installUpdate(false); return false; },
   'upd-apply': () => { bridge('reloadWeb'); return false; },
   'upd-auto': () => { st.autoUpd = !st.autoUpd; save(); drawUpdate(); return false; }
@@ -1170,18 +1172,30 @@ function usePrices(p) {
   return true;
 }
 try { usePrices(JSON.parse(localStorage.getItem(PRICES_LS))); } catch (e) { /* нет сохранённых цен */ }
+// Возвращает 'new' — цены обновились, 'same' — свежее нет, 'error' — не удалось скачать
 async function refreshPrices() {
   try {
     const res = await fetch(PRICES_URL + '?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) return;
+    if (!res.ok) return 'error';
     const text = await res.text();
     st.priceSeen = Date.now(); save();
-    if (!usePrices(JSON.parse(text))) return;
+    if (!usePrices(JSON.parse(text))) return 'same';
     try { localStorage.setItem(PRICES_LS, text); } catch (e) { /* хранилище недоступно */ }
     // открыты покупки или рецепт — перерисуем с новыми ценами, если человек ничего не вводит
     const page = location.hash.split('/')[1];
     if ((page === 'shop' || page === 'r') && !document.body.classList.contains('cooking') && !(document.activeElement && document.activeElement.matches('input, textarea'))) render(true);
-  } catch (e) { /* нет интернета — остаёмся на прежних ценах */ }
+    return 'new';
+  } catch (e) { return 'error'; /* нет интернета — остаёмся на прежних ценах */ }
+}
+// Кнопка «Проверить цены» в покупках
+async function checkPricesNow(btn) {
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = '⏳ Проверяю…';
+  const r = await refreshPrices();
+  if (btn.isConnected) { btn.disabled = false; btn.textContent = '🔄 Проверить цены'; }
+  toast(r === 'new' ? 'Цены обновлены — «Пятёрочка» на ' + ruDate(PRICES.updated['Пятёрочка'])
+    : r === 'same' ? 'У вас самые свежие цены — «Пятёрочка» на ' + ruDate(PRICES.updated['Пятёрочка'])
+    : 'Не удалось проверить цены. Проверьте интернет и попробуйте ещё раз.');
 }
 
 render(false);
